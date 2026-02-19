@@ -118,10 +118,10 @@ socket.on("incoming-call", async (data) => {
   const answer = await peer.createAnswer();
   await peer.setLocalDescription(answer);
 
-  socket.emit("answer-call", {
-    to: data.from,
-    answer
-  });
+socket.emit("private_message", {
+  to: currentChat,
+  from: myName,
+  message: input.value
 });
 
 socket.on("call-answered", async (data) => {

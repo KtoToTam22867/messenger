@@ -8,43 +8,53 @@ const io = new Server(server);
 
 app.use(express.static("public"));
 
-let users = {}; // socket.id -> username
+let users = {}; // username -> socket.id
 
 io.on("connection", (socket) => {
 
   socket.on("join", (username) => {
-    users[socket.id] = username;
-    io.emit("users", users);
+    users[username] = socket.id;
+    io.emit("users", Object.keys(users));
   });
 
   socket.on("private_message", (data) => {
-    io.to(data.to).emit("private_message", {
-      from: users[socket.id],
-      message: data.message
-    });
+    const targetId = users[data.to];
+    if (targetId) {
+      io.to(targetId).emit("private_message", {
+        from: data.from,
+        message: data.message
+      });
+    }
   });
 
-  // ===== ЗВОНОК =====
   socket.on("call-user", (data) => {
-    io.to(data.to).emit("incoming-call", {
-      from: socket.id,
-      offer: data.offer
-    });
+    const targetId = users[data.to];
+    if (targetId) {
+      io.to(targetId).emit("incoming-call", data);
+    }
   });
 
   socket.on("answer-call", (data) => {
-    io.to(data.to).emit("call-answered", {
-      answer: data.answer
-    });
+    const targetId = users[data.to];
+    if (targetId) {
+      io.to(targetId).emit("call-answered", data);
+    }
   });
 
   socket.on("ice-candidate", (data) => {
-    io.to(data.to).emit("ice-candidate", data.candidate);
+    const targetId = users[data.to];
+    if (targetId) {
+      io.to(targetId).emit("ice-candidate", data.candidate);
+    }
   });
 
   socket.on("disconnect", () => {
-    delete users[socket.id];
-    io.emit("users", users);
+    for (let name in users) {
+      if (users[name] === socket.id) {
+        delete users[name];
+      }
+    }
+    io.emit("users", Object.keys(users));
   });
 
 });
