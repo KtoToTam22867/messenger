@@ -2,221 +2,140 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Messenger</title>
+<title>Asylumgram</title>
 <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 
 <style>
 body {
   margin:0;
-  background:#1e1e1e;
+  background:#0f0f0f;
   color:white;
   font-family:Arial;
   display:flex;
-  justify-content:center;
-  align-items:center;
+  flex-direction:column;
   height:100vh;
 }
 
-#callScreen {
-  display:none;
-  flex-direction:column;
-  align-items:center;
-  justify-content:center;
-  width:100%;
-  height:100%;
-}
-
-.avatar {
-  width:120px;
-  height:120px;
-  border-radius:50%;
-  background:#555;
-  margin-bottom:15px;
-}
-
-#status {
-  opacity:0.7;
-  margin-bottom:30px;
-}
-
-.controls {
-  display:flex;
-  gap:20px;
-}
-
-.controls button {
-  width:60px;
-  height:60px;
-  border-radius:50%;
-  border:none;
+header {
+  background:#1a1a1a;
+  padding:15px;
   font-size:20px;
-  cursor:pointer;
+  color:#4cafef;
+  text-align:center;
 }
 
-.red { background:#e53935; color:white; }
-.gray { background:#333; color:white; }
-.green { background:#2e7d32; color:white; }
+#messages {
+  flex:1;
+  padding:15px;
+  overflow-y:auto;
+  display:flex;
+  flex-direction:column;
+}
 
-#mainMenu {
-  text-align:center;
+.message {
+  margin-bottom:10px;
+  padding:8px 12px;
+  border-radius:10px;
+  max-width:70%;
+}
+
+.me {
+  background:#4cafef;
+  align-self:flex-end;
+}
+
+.other {
+  background:#333;
+  align-self:flex-start;
+}
+
+.system {
+  align-self:center;
+  background:#222;
+  font-size:12px;
+  opacity:0.7;
+}
+
+#inputArea {
+  display:flex;
+  padding:10px;
+  background:#1a1a1a;
+}
+
+#msgInput {
+  flex:1;
+  padding:8px;
+  border:none;
+  border-radius:6px;
+  outline:none;
+}
+
+#sendBtn {
+  margin-left:10px;
+  padding:8px 15px;
+  border:none;
+  border-radius:6px;
+  background:#4cafef;
+  color:white;
+  cursor:pointer;
 }
 </style>
 </head>
 
 <body>
 
-<div id="mainMenu">
-  <h2>Messenger</h2>
-  <input id="username" placeholder="Ваше имя"><br><br>
-  <input id="callTo" placeholder="Кому звонить"><br><br>
-  <button onclick="startCall()" class="green">Позвонить</button>
+<header>Asylumgram</header>
+
+<div id="messages"></div>
+
+<div id="inputArea">
+  <input id="msgInput" placeholder="Введите сообщение...">
+  <button id="sendBtn">Отправить</button>
 </div>
-
-<div id="callScreen">
-  <div class="avatar"></div>
-  <h2 id="callName"></h2>
-  <div id="status">Соединение...</div>
-
-  <div class="controls">
-    <button class="gray" onclick="toggleScreen()">🖥</button>
-    <button class="gray" onclick="toggleCamera()">📷</button>
-    <button class="red" onclick="endCall()">📞</button>
-    <button class="gray" onclick="toggleMic()">🎤</button>
-  </div>
-</div>
-
-<audio id="remoteAudio" autoplay></audio>
 
 <script>
 const socket = io();
 
-let myName;
-let currentUser;
-let localStream = null;
-let peer = null;
-let micEnabled = true;
-let camEnabled = false;
+let myName = prompt("Введите ваше имя");
+if(!myName) myName = "Гость";
 
-// ===== ЗАПУСК ЗВОНКА =====
-async function startCall() {
-  myName = document.getElementById("username").value.trim();
-  currentUser = document.getElementById("callTo").value.trim();
+socket.emit("join", myName);
 
-  if (!myName || !currentUser) return alert("Введите имена");
+const input = document.getElementById("msgInput");
+const sendBtn = document.getElementById("sendBtn");
 
-  socket.emit("join", myName);
+sendBtn.onclick = sendMessage;
+input.addEventListener("keydown", e=>{
+  if(e.key==="Enter") sendMessage();
+});
 
-  try {
-    localStream = await navigator.mediaDevices.getUserMedia({
-      audio:true,
-      video:true
-    });
-  } catch(e) {
-    alert("Разреши камеру и микрофон");
-    return;
+function sendMessage(){
+  const text = input.value.trim();
+  if(!text) return;
+
+  socket.emit("chat_message", text);
+  input.value="";
+}
+
+socket.on("chat_message", data=>{
+  const div = document.createElement("div");
+
+  if(data.user === myName){
+    div.className="message me";
+  } else {
+    div.className="message other";
   }
 
-  document.getElementById("mainMenu").style.display="none";
-  document.getElementById("callScreen").style.display="flex";
-  document.getElementById("callName").innerText=currentUser;
-
-  createPeer();
-
-  const offer = await peer.createOffer();
-  await peer.setLocalDescription(offer);
-
-  socket.emit("call-user", {
-    from:myName,
-    to:currentUser,
-    offer
-  });
-}
-
-// ===== СОЗДАНИЕ PEER =====
-function createPeer() {
-  peer = new RTCPeerConnection();
-
-  localStream.getTracks().forEach(track=>{
-    peer.addTrack(track, localStream);
-  });
-
-  peer.ontrack = e=>{
-    document.getElementById("remoteAudio").srcObject=e.streams[0];
-    document.getElementById("status").innerText="Вызов активен";
-  };
-
-  peer.onicecandidate = e=>{
-    if(e.candidate){
-      socket.emit("ice-candidate",{
-        to:currentUser,
-        candidate:e.candidate
-      });
-    }
-  };
-}
-
-// ===== ПРИНИМАЕМ ЗВОНОК =====
-socket.on("incoming-call", async data=>{
-  myName = prompt("Введите имя");
-  currentUser = data.from;
-
-  socket.emit("join", myName);
-
-  localStream = await navigator.mediaDevices.getUserMedia({
-    audio:true,
-    video:true
-  });
-
-  document.getElementById("mainMenu").style.display="none";
-  document.getElementById("callScreen").style.display="flex";
-  document.getElementById("callName").innerText=currentUser;
-
-  createPeer();
-
-  await peer.setRemoteDescription(new RTCSessionDescription(data.offer));
-  const answer = await peer.createAnswer();
-  await peer.setLocalDescription(answer);
-
-  socket.emit("answer-call",{
-    to:data.from,
-    answer
-  });
+  div.innerText = data.user + ": " + data.message;
+  document.getElementById("messages").appendChild(div);
 });
 
-socket.on("call-answered", async data=>{
-  await peer.setRemoteDescription(new RTCSessionDescription(data.answer));
+socket.on("system_message", text=>{
+  const div = document.createElement("div");
+  div.className="message system";
+  div.innerText = text;
+  document.getElementById("messages").appendChild(div);
 });
-
-socket.on("ice-candidate", async candidate=>{
-  if(peer && peer.remoteDescription){
-    await peer.addIceCandidate(new RTCIceCandidate(candidate));
-  }
-});
-
-// ===== КНОПКИ =====
-function toggleMic(){
-  if(!localStream) return;
-  micEnabled=!micEnabled;
-  localStream.getAudioTracks()[0].enabled=micEnabled;
-}
-
-function toggleCamera(){
-  if(!localStream) return;
-  camEnabled=!camEnabled;
-  localStream.getVideoTracks()[0].enabled=camEnabled;
-}
-
-async function toggleScreen(){
-  const screen=await navigator.mediaDevices.getDisplayMedia({video:true});
-  const sender=peer.getSenders().find(s=>s.track.kind==="video");
-  sender.replaceTrack(screen.getVideoTracks()[0]);
-}
-
-function endCall(){
-  if(peer) peer.close();
-  if(localStream) localStream.getTracks().forEach(t=>t.stop());
-  location.reload();
-}
 </script>
 
 </body>
