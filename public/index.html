@@ -7,53 +7,83 @@
 <script src="/socket.io/socket.io.js"></script>
 
 <style>
-:root{
-  --bg:#0f0f0f;
-  --panel:#1a1a1a;
-  --accent:#0088cc;
-}
-
 body{
   margin:0;
   font-family:Arial;
-  background:var(--bg);
+  background:#0f0f0f;
   color:white;
-  display:flex;
   height:100vh;
+}
+
+/* ===== LOGIN ===== */
+#login{
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  height:100vh;
+}
+
+#login input{
+  padding:12px;
+  border:none;
+  border-radius:10px;
+  margin:5px;
+  width:200px;
+}
+
+#login button{
+  padding:10px 20px;
+  border:none;
+  border-radius:10px;
+  background:#0088cc;
+  color:white;
+}
+
+/* ===== APP ===== */
+#app{
+  display:none;
+  height:100vh;
+  display:flex;
 }
 
 #sidebar{
   width:220px;
-  background:var(--panel);
-  overflow-y:auto;
+  background:#1a1a1a;
   padding:10px;
+  overflow-y:auto;
 }
 
-.user{
-  padding:8px;
+.chatBtn{
+  padding:10px;
   cursor:pointer;
   border-radius:8px;
+  margin-bottom:5px;
+}
+
+.chatBtn:hover{
+  background:#2a2a2a;
+}
+
+.onlineDot{
+  width:8px;
+  height:8px;
+  background:#00ff55;
+  border-radius:50%;
+  display:inline-block;
+  margin-right:6px;
+}
+
+#chat{
+  flex:1;
   display:flex;
-  justify-content:space-between;
+  flex-direction:column;
 }
-
-.user:hover{ background:#2a2a2a; }
-
-.dot{
-  width:8px;height:8px;background:#00ff55;border-radius:50%;
-}
-
-.notify{
-  width:8px;height:8px;background:red;border-radius:50%;
-}
-
-#chat{ flex:1;display:flex;flex-direction:column; }
 
 #header{
   padding:15px;
-  background:var(--panel);
-  display:flex;
-  justify-content:space-between;
+  background:#1f1f1f;
+  border-bottom:1px solid #333;
 }
 
 #messages{
@@ -69,17 +99,23 @@ body{
   margin:5px 0;
   padding:8px 12px;
   border-radius:15px;
+  word-wrap:break-word;
 }
 
-.me{ background:var(--accent);align-self:flex-end; }
-.other{ background:#262626;align-self:flex-start; }
+.me{
+  background:#0088cc;
+  align-self:flex-end;
+}
 
-img{ max-width:100%;border-radius:10px;margin-top:5px; }
+.other{
+  background:#262626;
+  align-self:flex-start;
+}
 
 #bottom{
   display:flex;
   padding:10px;
-  background:var(--panel);
+  background:#1f1f1f;
 }
 
 #input{
@@ -89,6 +125,7 @@ img{ max-width:100%;border-radius:10px;margin-top:5px; }
   border-radius:20px;
   background:#2a2a2a;
   color:white;
+  outline:none;
 }
 
 button{
@@ -96,10 +133,12 @@ button{
   border:none;
   padding:8px 12px;
   border-radius:20px;
-  background:var(--accent);
+  background:#0088cc;
   color:white;
+  cursor:pointer;
 }
 
+/* MOBILE */
 @media(max-width:700px){
   #sidebar{ display:none; }
 }
@@ -108,182 +147,140 @@ button{
 
 <body>
 
-<div id="sidebar"></div>
+<!-- LOGIN -->
+<div id="login">
+  <h2>Asylumgram</h2>
+  <input id="nickname" placeholder="Введите ник">
+  <button onclick="register()">Войти</button>
+  <div id="error" style="color:red;"></div>
+</div>
 
-<div id="chat">
-  <div id="header">
-    <span id="chatTitle">Глобальный чат</span>
-    <div>
-      <button onclick="setTheme('dark')">🌙</button>
-      <button onclick="setTheme('blue')">🔵</button>
-      <button onclick="setTheme('purple')">🟣</button>
-      <button onclick="chooseWallpaper()">🖼</button>
-    </div>
+<!-- APP -->
+<div id="app">
+  <div id="sidebar">
+    <div class="chatBtn" onclick="openGlobal()">🌍 Глобальный чат</div>
+    <hr>
+    <div id="users"></div>
   </div>
 
-  <div id="messages"></div>
+  <div id="chat">
+    <div id="header">Глобальный чат</div>
+    <div id="messages"></div>
 
-  <div id="bottom">
-    <input id="input" placeholder="Сообщение...">
-    <input type="file" id="imageInput" style="display:none">
-    <input type="file" id="wallpaperInput" style="display:none">
-    <button onclick="sendText()">➤</button>
-    <button onclick="sendImage()">📎</button>
+    <div id="bottom">
+      <input id="input" placeholder="Сообщение...">
+      <button onclick="sendText()">➤</button>
+    </div>
   </div>
 </div>
 
 <script>
-const socket=io();
-let username=prompt("Ваше имя?");
-if(!username) username="Гость";
+const socket = io();
+let username = null;
+let currentChat = "global";
 
-socket.emit("join",username);
+/* ===== РЕГИСТРАЦИЯ ===== */
+function register(){
+  const nick = document.getElementById("nickname").value.trim();
+  if(!nick) return;
 
-let currentChat="global";
-let notifications={};
-
-const sidebar=document.getElementById("sidebar");
-const messagesDiv=document.getElementById("messages");
-const input=document.getElementById("input");
-
-socket.on("your_name",name=>{
-  username=name;
-  alert("Ваш ник: "+name);
-});
-
-function addMessage(msg){
-  const div=document.createElement("div");
-  div.classList.add("message");
-  div.classList.add(msg.from===username?"me":"other");
-
-  if(msg.type==="image"){
-    div.innerHTML="<b>"+msg.from+":</b><br><img src='"+msg.content+"'>";
-  } else {
-    div.innerHTML="<b>"+msg.from+":</b> "+msg.content;
-  }
-
-  messagesDiv.appendChild(div);
-  messagesDiv.scrollTop=messagesDiv.scrollHeight;
+  socket.emit("register", nick, (res)=>{
+    if(res.success){
+      username = nick;
+      localStorage.setItem("nickname", nick);
+      document.getElementById("login").style.display="none";
+      document.getElementById("app").style.display="flex";
+    } else {
+      document.getElementById("error").innerText = res.message;
+    }
+  });
 }
 
-socket.on("users",users=>{
-  sidebar.innerHTML="<h3>Онлайн</h3>";
+/* Автовход */
+const savedNick = localStorage.getItem("nickname");
+if(savedNick){
+  document.getElementById("nickname").value = savedNick;
+}
+
+/* ===== ЧАТЫ ===== */
+
+function openGlobal(){
+  currentChat = "global";
+  document.getElementById("header").innerText = "Глобальный чат";
+  document.getElementById("messages").innerHTML="";
+}
+
+/* Онлайн список */
+socket.on("users", users=>{
+  const usersDiv = document.getElementById("users");
+  usersDiv.innerHTML="";
+
   users.forEach(u=>{
-    if(u!==username){
-      const div=document.createElement("div");
-      div.classList.add("user");
-      div.innerHTML="<span>"+u+"</span><span class='dot'></span>";
-      if(notifications[u]) div.innerHTML+="<span class='notify'></span>";
+    if(u !== username){
+      const div = document.createElement("div");
+      div.className="chatBtn";
+      div.innerHTML = "<span class='onlineDot'></span>"+u;
       div.onclick=()=>{
-        currentChat=u;
-        document.getElementById("chatTitle").innerText="Личные: "+u;
-        messagesDiv.innerHTML="";
-        notifications[u]=false;
-        socket.emit("load_private",u);
+        currentChat = u;
+        document.getElementById("header").innerText = "Личные: "+u;
+        document.getElementById("messages").innerHTML="";
+        socket.emit("load_private", u);
       };
-      sidebar.appendChild(div);
+      usersDiv.appendChild(div);
     }
   });
 });
 
-socket.on("new_global",msg=>{
-  if(currentChat==="global"){
+/* Сообщения */
+socket.on("new_global", msg=>{
+  if(currentChat==="global")
     addMessage(msg);
-  } else {
-    document.title="🔔 Новое сообщение!";
-  }
 });
 
-socket.on("new_private",msg=>{
-  if(currentChat===msg.from || currentChat===msg.to){
+socket.on("new_private", msg=>{
+  if(currentChat===msg.from || currentChat===msg.to)
     addMessage(msg);
-  } else {
-    notifications[msg.from]=true;
-    document.title="🔔 Личное сообщение!";
-  }
 });
 
-socket.on("private_history",history=>{
-  messagesDiv.innerHTML="";
+socket.on("private_history", history=>{
   history.forEach(addMessage);
 });
 
+/* КИК */
+socket.on("kicked", reason=>{
+  alert(reason);
+  localStorage.removeItem("nickname");
+  location.reload();
+});
+
+/* ===== ОТПРАВКА ===== */
 function sendText(){
-  const text=input.value.trim();
+  const input = document.getElementById("input");
+  const text = input.value.trim();
   if(!text) return;
 
-  const msg={from:username,to:currentChat,type:"text",content:text};
+  const msg = {
+    from: username,
+    to: currentChat,
+    content: text
+  };
 
   if(currentChat==="global"){
-    socket.emit("send_global",msg);
+    socket.emit("send_global", msg);
   } else {
-    socket.emit("send_private",{to:currentChat,message:msg});
+    socket.emit("send_private", {to: currentChat, message: msg});
   }
 
   input.value="";
 }
 
-function sendImage(){
-  document.getElementById("imageInput").click();
-}
-
-document.getElementById("imageInput").addEventListener("change",function(){
-  const file=this.files[0];
-  const reader=new FileReader();
-  reader.onload=e=>{
-    const msg={from:username,to:currentChat,type:"image",content:e.target.result};
-    if(currentChat==="global"){
-      socket.emit("send_global",msg);
-    } else {
-      socket.emit("send_private",{to:currentChat,message:msg});
-    }
-  };
-  reader.readAsDataURL(file);
-});
-
-/* Темы */
-function setTheme(theme){
-  if(theme==="dark"){
-    document.documentElement.style.setProperty('--bg','#0f0f0f');
-    document.documentElement.style.setProperty('--panel','#1a1a1a');
-    document.documentElement.style.setProperty('--accent','#0088cc');
-  }
-  if(theme==="blue"){
-    document.documentElement.style.setProperty('--bg','#0e1621');
-    document.documentElement.style.setProperty('--panel','#17212b');
-    document.documentElement.style.setProperty('--accent','#2b5278');
-  }
-  if(theme==="purple"){
-    document.documentElement.style.setProperty('--bg','#1c1425');
-    document.documentElement.style.setProperty('--panel','#2a1f3b');
-    document.documentElement.style.setProperty('--accent','#9b59b6');
-  }
-  localStorage.setItem("theme",theme);
-}
-
-const savedTheme=localStorage.getItem("theme");
-if(savedTheme) setTheme(savedTheme);
-
-/* Обои */
-function chooseWallpaper(){
-  document.getElementById("wallpaperInput").click();
-}
-
-document.getElementById("wallpaperInput").addEventListener("change",function(){
-  const file=this.files[0];
-  const reader=new FileReader();
-  reader.onload=e=>{
-    document.body.style.backgroundImage="url('"+e.target.result+"')";
-    document.body.style.backgroundSize="cover";
-    localStorage.setItem("wallpaper",e.target.result);
-  };
-  reader.readAsDataURL(file);
-});
-
-const savedWallpaper=localStorage.getItem("wallpaper");
-if(savedWallpaper){
-  document.body.style.backgroundImage="url('"+savedWallpaper+"')";
-  document.body.style.backgroundSize="cover";
+/* Добавление сообщения */
+function addMessage(msg){
+  const div = document.createElement("div");
+  div.classList.add("message");
+  div.classList.add(msg.from===username ? "me" : "other");
+  div.innerText = msg.from + ": " + msg.content;
+  document.getElementById("messages").appendChild(div);
 }
 </script>
 
