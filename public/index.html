@@ -6,24 +6,80 @@
 <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 <style>
 body { margin:0; font-family:Arial; display:flex; height:100vh; }
-#users { width:200px; background:#222; color:white; padding:10px; overflow-y:auto; }
-#chat { flex:1; display:flex; flex-direction:column; }
-#messages { flex:1; padding:10px; overflow-y:auto; }
-#bottom { display:flex; }
-input { flex:1; padding:10px; font-size:16px; }
-button { padding:10px; font-size:16px; }
+
+#users {
+  width:220px;
+  background:#1f1f1f;
+  color:white;
+  padding:10px;
+  overflow-y:auto;
+}
+
+#chat {
+  flex:1;
+  display:flex;
+  flex-direction:column;
+}
+
+#messages {
+  flex:1;
+  padding:15px;
+  overflow-y:auto;
+  background:#f5f5f5;
+}
+
+#bottom {
+  display:flex;
+  padding:10px;
+  background:white;
+}
+
+input {
+  flex:1;
+  padding:10px;
+  font-size:16px;
+}
+
+button {
+  padding:8px 12px;
+  margin-left:5px;
+  cursor:pointer;
+}
+
 .message { margin:5px 0; }
 .me { color:blue; }
+
+#callPanel {
+  display:none;
+  background:#222;
+  color:white;
+  padding:10px;
+  display:flex;
+  gap:10px;
+  align-items:center;
+}
+
+video {
+  width:200px;
+  border-radius:8px;
+}
 </style>
 </head>
 <body>
 
-<div id="users">
-<h3>Пользователи</h3>
-</div>
+<div id="users"><h3>Пользователи</h3></div>
 
 <div id="chat">
 <div id="messages"></div>
+
+<div id="callPanel">
+<span id="callStatus">📞 Идёт звонок</span>
+<button onclick="toggleMic()">🎤</button>
+<button onclick="toggleCamera()">📹</button>
+<button onclick="shareScreen()">🖥</button>
+<button onclick="endCall()">❌</button>
+</div>
+
 <div id="bottom">
 <input id="msgInput" placeholder="Сообщение...">
 <button onclick="sendMessage()">Отправить</button>
@@ -31,7 +87,8 @@ button { padding:10px; font-size:16px; }
 </div>
 </div>
 
-<audio id="remoteAudio" autoplay></audio>
+<video id="localVideo" autoplay muted></video>
+<video id="remoteVideo" autoplay></video>
 
 <script>
 const socket = io();
@@ -39,16 +96,17 @@ let myName = prompt("Введите имя");
 let currentChat = null;
 let localStream = null;
 let peer = null;
+let micEnabled = true;
+let camEnabled = true;
 
 socket.emit("join", myName);
 
-// Получаем микрофон
-navigator.mediaDevices.getUserMedia({ audio:true })
+navigator.mediaDevices.getUserMedia({ audio:true, video:true })
 .then(stream => {
   localStream = stream;
+  document.getElementById("localVideo").srcObject = stream;
 });
 
-// Обновление списка пользователей
 socket.on("users", (userList) => {
   const usersDiv = document.getElementById("users");
   usersDiv.innerHTML = "<h3>Пользователи</h3>";
@@ -57,23 +115,15 @@ socket.on("users", (userList) => {
     if (name !== myName) {
       const btn = document.createElement("button");
       btn.innerText = name;
-      btn.onclick = () => {
-        currentChat = name;
-        document.getElementById("messages").innerHTML = "";
-      };
+      btn.onclick = () => currentChat = name;
       usersDiv.appendChild(btn);
       usersDiv.appendChild(document.createElement("br"));
     }
   });
 });
 
-// Отправка сообщения
 function sendMessage() {
-  if (!currentChat) {
-    alert("Выберите пользователя");
-    return;
-  }
-
+  if (!currentChat) return alert("Выберите пользователя");
   const input = document.getElementById("msgInput");
   const text = input.value.trim();
   if (!text) return;
@@ -88,14 +138,11 @@ function sendMessage() {
   input.value = "";
 }
 
-// Получение сообщения
 socket.on("private_message", (data) => {
-  if (data.from === currentChat) {
+  if (data.from === currentChat)
     addMessage(data.from + ": " + data.message, false);
-  }
 });
 
-// Добавление сообщения в чат
 function addMessage(text, me) {
   const div = document.createElement("div");
   div.className = "message";
@@ -107,37 +154,57 @@ function addMessage(text, me) {
 // ===== ЗВОНОК =====
 
 function callUser() {
-  if (!currentChat) {
-    alert("Выберите пользователя");
-    return;
-  }
+  if (!currentChat) return alert("Выберите пользователя");
+
+  document.getElementById("callPanel").style.display = "flex";
 
   peer = createPeer(currentChat);
 
-  if (localStream) {
-    localStream.getTracks().forEach(track => {
-      peer.addTrack(track, localStream);
-    });
-  }
+  localStream.getTracks().forEach(track => {
+    peer.addTrack(track, localStream);
+  });
 
   peer.createOffer().then(offer => {
     peer.setLocalDescription(offer);
     socket.emit("call-user", {
       from: myName,
       to: currentChat,
-      offer: offer
+      offer
     });
   });
 }
 
+function endCall() {
+  if (peer) peer.close();
+  peer = null;
+  document.getElementById("callPanel").style.display = "none";
+}
+
+function toggleMic() {
+  micEnabled = !micEnabled;
+  localStream.getAudioTracks()[0].enabled = micEnabled;
+}
+
+function toggleCamera() {
+  camEnabled = !camEnabled;
+  localStream.getVideoTracks()[0].enabled = camEnabled;
+}
+
+async function shareScreen() {
+  const screenStream = await navigator.mediaDevices.getDisplayMedia({ video:true });
+  const screenTrack = screenStream.getVideoTracks()[0];
+  const sender = peer.getSenders().find(s => s.track.kind === "video");
+  sender.replaceTrack(screenTrack);
+}
+
 socket.on("incoming-call", async (data) => {
+  document.getElementById("callPanel").style.display = "flex";
+
   peer = createPeer(data.from);
 
-  if (localStream) {
-    localStream.getTracks().forEach(track => {
-      peer.addTrack(track, localStream);
-    });
-  }
+  localStream.getTracks().forEach(track => {
+    peer.addTrack(track, localStream);
+  });
 
   await peer.setRemoteDescription(new RTCSessionDescription(data.offer));
   const answer = await peer.createAnswer();
@@ -146,20 +213,18 @@ socket.on("incoming-call", async (data) => {
   socket.emit("answer-call", {
     from: myName,
     to: data.from,
-    answer: answer
+    answer
   });
 });
 
 socket.on("call-answered", async (data) => {
-  if (peer) {
+  if (peer)
     await peer.setRemoteDescription(new RTCSessionDescription(data.answer));
-  }
 });
 
 socket.on("ice-candidate", async (candidate) => {
-  if (peer) {
+  if (peer)
     await peer.addIceCandidate(new RTCIceCandidate(candidate));
-  }
 });
 
 function createPeer(targetName) {
@@ -176,7 +241,7 @@ function createPeer(targetName) {
   };
 
   pc.ontrack = event => {
-    document.getElementById("remoteAudio").srcObject = event.streams[0];
+    document.getElementById("remoteVideo").srcObject = event.streams[0];
   };
 
   return pc;
