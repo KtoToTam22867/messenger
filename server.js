@@ -10,11 +10,8 @@ const io = new Server(server, {
 
 app.use(express.static("public"));
 
-let users = {};
-let messages = {
-  global: [],
-  private: {}
-};
+let users = {}; // { username: socket.id }
+let privateMessages = {}; // { room: [] }
 
 function getRoom(a,b){
   return [a,b].sort().join("_");
@@ -28,38 +25,49 @@ io.on("connection", (socket)=>{
     io.emit("users", Object.keys(users));
   });
 
-  socket.on("send_global", data=>{
-    const msg = {
-      user: socket.username,
-      type: data.type,
-      content: data.content
-    };
-    messages.global.push(msg);
-    io.emit("new_global", msg);
-  });
+  socket.on("send_message", ({to, type, content})=>{
 
-  socket.on("send_private", ({to, type, content})=>{
-    const room = getRoom(socket.username, to);
-    if(!messages.private[room]) messages.private[room] = [];
+    if(to){ // приватный чат
+      const room = getRoom(socket.username, to);
 
-    const msg = {
-      from: socket.username,
-      to,
-      type,
-      content
-    };
+      if(!privateMessages[room])
+        privateMessages[room] = [];
 
-    messages.private[room].push(msg);
+      const msg = {
+        from: socket.username,
+        to,
+        type,
+        content
+      };
 
-    const target = users[to];
-    if(target) io.to(target).emit("new_private", msg);
+      privateMessages[room].push(msg);
 
-    socket.emit("new_private", msg);
+      if(users[to])
+        io.to(users[to]).emit("new_message", msg);
+
+      socket.emit("new_message", msg);
+
+    } else { // глобальный чат
+      const msg = {
+        from: socket.username,
+        type,
+        content
+      };
+
+      io.emit("new_message", msg);
+    }
+
   });
 
   socket.on("load_private", other=>{
     const room = getRoom(socket.username, other);
-    socket.emit("private_history", messages.private[room] || []);
+    socket.emit("private_history", privateMessages[room] || []);
+  });
+
+  socket.on("typing", to=>{
+    if(to && users[to]){
+      io.to(users[to]).emit("typing", socket.username);
+    }
   });
 
   socket.on("disconnect", ()=>{
@@ -70,5 +78,5 @@ io.on("connection", (socket)=>{
 });
 
 server.listen(3000, ()=>{
-  console.log("Asylumgram v4 PRO running");
+  console.log("Asylumgram v5 Lite running");
 });
