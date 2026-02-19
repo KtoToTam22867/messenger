@@ -1,146 +1,79 @@
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
+const fs = require("fs");
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { maxHttpBufferSize: 1e8 });
+const io = new Server(server);
 
 app.use(express.static("public"));
+app.use(express.json({limit:"50mb"}));
 
-let accounts = {};
-let onlineUsers = {};
-let privateMessages = {};
-let groups = {};
+let users = {};
+let online = {};
 
-function getRoom(a, b) {
-  return [a, b].sort().join("_");
+if (fs.existsSync("users.json")) {
+  users = JSON.parse(fs.readFileSync("users.json"));
 }
 
-io.on("connection", (socket) => {
+function saveUsers(){
+  fs.writeFileSync("users.json", JSON.stringify(users,null,2));
+}
 
-  // REGISTER
-  socket.on("register", (data, cb) => {
-    if (accounts[data.username])
-      return cb({ success: false, message: "Ник занят" });
+io.on("connection", socket => {
 
-    accounts[data.username] = { password: data.password };
-    cb({ success: true });
+  socket.on("register", (data, cb)=>{
+    if(users[data.username]) return cb({success:false,message:"Ник занят"});
+    users[data.username]={password:data.password,avatar:null};
+    saveUsers();
+    cb({success:true});
   });
 
-  // LOGIN
-  socket.on("login", (data, cb) => {
-    if (!accounts[data.username])
-      return cb({ success: false, message: "Нет аккаунта" });
-
-    if (accounts[data.username].password !== data.password)
-      return cb({ success: false, message: "Неверный пароль" });
-
-    if (onlineUsers[data.username])
-      return cb({ success: false, message: "Уже онлайн" });
-
-    socket.username = data.username;
-    onlineUsers[data.username] = socket.id;
-
-    cb({ success: true });
-    io.emit("users", Object.keys(onlineUsers));
-    socket.emit("groups", groups);
+  socket.on("login", (data, cb)=>{
+    if(!users[data.username]) return cb({success:false,message:"Нет такого пользователя"});
+    if(users[data.username].password!==data.password)
+      return cb({success:false,message:"Неверный пароль"});
+    online[data.username]=socket.id;
+    socket.username=data.username;
+    cb({success:true,avatar:users[data.username].avatar});
+    io.emit("online",Object.keys(online));
   });
 
-  // GLOBAL
-  socket.on("send_global", msg => {
-    io.emit("new_global", msg);
+  socket.on("setAvatar",(img)=>{
+    if(!socket.username) return;
+    users[socket.username].avatar=img;
+    saveUsers();
   });
 
-  // PRIVATE
-  socket.on("send_private", ({ to, message }) => {
-    const room = getRoom(socket.username, to);
-
-    if (!privateMessages[room])
-      privateMessages[room] = [];
-
-    privateMessages[room].push(message);
-
-    if (onlineUsers[to])
-      io.to(onlineUsers[to]).emit("new_private", message);
-
-    socket.emit("new_private", message);
+  socket.on("send_global",(msg)=>{
+    io.emit("new_global",msg);
   });
 
-  socket.on("load_private", other => {
-    const room = getRoom(socket.username, other);
-    socket.emit("private_history", privateMessages[room] || []);
+  socket.on("send_private",(data)=>{
+    const target=online[data.to];
+    if(target){
+      io.to(target).emit("new_private",data);
+    }
   });
 
-  // GROUPS
-  socket.on("create_group", (name, cb) => {
-    if (groups[name])
-      return cb({ success: false, message: "Группа существует" });
-
-    groups[name] = {
-      admin: socket.username,
-      members: [socket.username],
-      messages: []
-    };
-
-    io.emit("groups", groups);
-    cb({ success: true });
+  socket.on("call",(data)=>{
+    const target=online[data.to];
+    if(target) io.to(target).emit("call",data);
   });
 
-  socket.on("join_group", name => {
-    if (!groups[name]) return;
-
-    if (!groups[name].members.includes(socket.username))
-      groups[name].members.push(socket.username);
-
-    socket.emit("group_history", groups[name].messages);
+  socket.on("signal",(data)=>{
+    const target=online[data.to];
+    if(target) io.to(target).emit("signal",data);
   });
 
-  socket.on("send_group", ({ groupName, message }) => {
-    if (!groups[groupName]) return;
-
-    groups[groupName].messages.push(message);
-
-    groups[groupName].members.forEach(member => {
-      if (onlineUsers[member])
-        io.to(onlineUsers[member]).emit("new_group", {
-          groupName,
-          message
-        });
-    });
-  });
-
-  // CALL SIGNALING
-  socket.on("call_user", data => {
-    const target = onlineUsers[data.to];
-    if (target)
-      io.to(target).emit("incoming_call", {
-        from: socket.username,
-        offer: data.offer
-      });
-  });
-
-  socket.on("answer_call", data => {
-    const target = onlineUsers[data.to];
-    if (target)
-      io.to(target).emit("call_answer", {
-        answer: data.answer
-      });
-  });
-
-  socket.on("ice_candidate", data => {
-    const target = onlineUsers[data.to];
-    if (target)
-      io.to(target).emit("ice_candidate", data.candidate);
-  });
-
-  socket.on("disconnect", () => {
-    if (socket.username) {
-      delete onlineUsers[socket.username];
-      io.emit("users", Object.keys(onlineUsers));
+  socket.on("disconnect",()=>{
+    if(socket.username){
+      delete online[socket.username];
+      io.emit("online",Object.keys(online));
     }
   });
 
 });
 
-server.listen(3000, () => console.log("🔥 ASYLUMGRAM PRO FULL RUNNING"));
+server.listen(3000);

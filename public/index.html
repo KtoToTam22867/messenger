@@ -3,19 +3,17 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Asylumgram PRO</title>
+<title>Asylumgram</title>
 <script src="/socket.io/socket.io.js"></script>
-
 <style>
 body{
 margin:0;
 font-family:Arial;
-background:#0f0f0f;
-color:white;
 height:100vh;
 display:flex;
+background:#121212;
+color:white;
 }
-
 #auth{
 position:absolute;
 width:100%;
@@ -24,49 +22,47 @@ display:flex;
 flex-direction:column;
 justify-content:center;
 align-items:center;
-background:#0f0f0f;
+background:#121212;
 }
-
 #auth input{
 padding:10px;
 margin:5px;
 border:none;
 border-radius:8px;
-width:200px;
+width:220px;
 }
-
 #auth button{
-padding:10px 15px;
+padding:10px;
+margin:5px;
 border:none;
 border-radius:8px;
-background:#00c853;
+background:#2196f3;
 color:white;
 cursor:pointer;
 }
-
-#app{
-display:none;
-width:100%;
-}
-
+#app{display:none;width:100%;}
 #sidebar{
-width:230px;
-background:#1a1a1a;
+width:240px;
+background:#1e1e1e;
 padding:10px;
 overflow-y:auto;
 }
-
+.user{
+padding:6px;
+cursor:pointer;
+display:flex;
+align-items:center;
+}
+.onlineDot{
+width:8px;height:8px;border-radius:50%;background:lime;margin-right:6px;
+}
 #chat{
 flex:1;
 display:flex;
 flex-direction:column;
+background-size:cover;
+background-position:center;
 }
-
-#header{
-padding:15px;
-background:#1f1f1f;
-}
-
 #messages{
 flex:1;
 overflow-y:auto;
@@ -74,24 +70,19 @@ padding:10px;
 display:flex;
 flex-direction:column;
 }
-
-.message{
+.msg{
 max-width:70%;
-margin:5px 0;
 padding:8px 12px;
-border-radius:15px;
-word-wrap:break-word;
+margin:5px 0;
+border-radius:12px;
 }
-
-.me{background:#00c853;align-self:flex-end;}
-.other{background:#262626;align-self:flex-start;}
-
+.me{background:#2196f3;align-self:flex-end;}
+.other{background:#333;align-self:flex-start;}
 #bottom{
 display:flex;
 padding:10px;
-background:#1f1f1f;
+background:#1a1a1a;
 }
-
 #input{
 flex:1;
 padding:10px;
@@ -100,152 +91,165 @@ border-radius:20px;
 background:#2a2a2a;
 color:white;
 }
-
 button{
 margin-left:5px;
 border:none;
 padding:8px 12px;
 border-radius:20px;
-background:#00c853;
+background:#2196f3;
 color:white;
 cursor:pointer;
 }
-
-.user{
-padding:6px;
-cursor:pointer;
-border-radius:6px;
-}
-
-.user:hover{
-background:#2a2a2a;
-}
+img.chatImage{max-width:200px;border-radius:10px;margin-top:5px;}
 </style>
 </head>
-
 <body>
 
 <div id="auth">
-<h2>Asylumgram PRO</h2>
-<input id="userInput" placeholder="Ник">
-<input id="passInput" type="password" placeholder="Пароль">
+<h2>Asylumgram</h2>
+<input id="u" placeholder="Ник">
+<input id="p" type="password" placeholder="Пароль">
 <button onclick="register()">Регистрация</button>
 <button onclick="login()">Вход</button>
-<div id="error" style="color:red;"></div>
+<div id="err" style="color:red;"></div>
 </div>
 
 <div id="app">
-
 <div id="sidebar">
-<div onclick="openGlobal()">🌍 Глобал</div>
-<hr>
+<h3>Пользователи</h3>
 <div id="users"></div>
+<hr>
+<input type="file" id="avatarInput">
+<button onclick="setAvatar()">Аватар</button>
+<input type="file" id="bgInput">
+<button onclick="setBg()">Обои</button>
 </div>
 
 <div id="chat">
-<div id="header">
-<span id="chatTitle">Глобал</span>
-</div>
 <div id="messages"></div>
 <div id="bottom">
-<input id="input" placeholder="Сообщение...">
+<input id="input" placeholder="Сообщение">
+<input type="file" id="imgInput" style="display:none">
 <button onclick="send()">➤</button>
+<button onclick="document.getElementById('imgInput').click()">📷</button>
+<button onclick="recordVoice()">🎤</button>
 </div>
 </div>
-
 </div>
 
 <script>
-const socket = io();
-let username = null;
-let currentType = "global";
-
-const userInput = document.getElementById("userInput");
-const passInput = document.getElementById("passInput");
-const errorDiv = document.getElementById("error");
-const authDiv = document.getElementById("auth");
-const appDiv = document.getElementById("app");
-const input = document.getElementById("input");
-const messages = document.getElementById("messages");
-const usersDiv = document.getElementById("users");
+const socket=io();
+let username=null;
+let onlineUsers=[];
+let mediaRecorder;
+let currentChat="global";
 
 function register(){
-if(!userInput.value || !passInput.value){
-errorDiv.innerText="Введите ник и пароль";
-return;
-}
-
-socket.emit("register",
-{username:userInput.value,password:passInput.value},
-res=>{
-if(res.success){
-alert("Регистрация успешна");
-errorDiv.innerText="";
-}else{
-errorDiv.innerText=res.message;
-}
+socket.emit("register",{username:u.value,password:p.value},res=>{
+if(res.success) alert("Успешно");
+else err.innerText=res.message;
 });
 }
 
 function login(){
-if(!userInput.value || !passInput.value){
-errorDiv.innerText="Введите ник и пароль";
-return;
-}
-
-socket.emit("login",
-{username:userInput.value,password:passInput.value},
-res=>{
+socket.emit("login",{username:u.value,password:p.value},res=>{
 if(res.success){
-username=userInput.value;
-authDiv.style.display="none";
-appDiv.style.display="flex";
-}else{
-errorDiv.innerText=res.message;
-}
+username=u.value;
+auth.style.display="none";
+app.style.display="flex";
+}else err.innerText=res.message;
 });
 }
 
-function openGlobal(){
-messages.innerHTML="";
-}
-
-socket.on("users",list=>{
-usersDiv.innerHTML="";
+socket.on("online",list=>{
+onlineUsers=list;
+users.innerHTML="";
 list.forEach(u=>{
 if(u!==username){
-const d=document.createElement("div");
-d.className="user";
-d.innerText=u;
-usersDiv.appendChild(d);
+let div=document.createElement("div");
+div.className="user";
+div.innerHTML='<div class="onlineDot"></div>'+u;
+div.onclick=()=>{currentChat=u;messages.innerHTML="";};
+users.appendChild(div);
 }
 });
 });
 
 function send(){
-if(!username) return;
-
-const text=input.value.trim();
-if(!text) return;
-
-const msg={from:username,type:"text",content:text};
+if(!input.value) return;
+let msg={from:username,text:input.value};
+if(currentChat==="global")
 socket.emit("send_global",msg);
+else
+socket.emit("send_private",{...msg,to:currentChat});
 input.value="";
 }
 
-function add(msg){
-const div=document.createElement("div");
-div.classList.add("message");
-div.classList.add(msg.from===username?"me":"other");
-div.innerText=msg.from+": "+msg.content;
+socket.on("new_global",addMsg);
+socket.on("new_private",addMsg);
+
+function addMsg(msg){
+let div=document.createElement("div");
+div.className="msg "+(msg.from===username?"me":"other");
+if(msg.image){
+div.innerHTML=msg.from+"<br><img class='chatImage' src='"+msg.image+"'>";
+}
+else if(msg.voice){
+let audio=document.createElement("audio");
+audio.controls=true;
+audio.src=msg.voice;
+div.innerText=msg.from;
+div.appendChild(document.createElement("br"));
+div.appendChild(audio);
+}
+else{
+div.innerText=msg.from+": "+msg.text;
+}
 messages.appendChild(div);
 messages.scrollTop=messages.scrollHeight;
 }
 
-socket.on("new_global",msg=>{
-add(msg);
-});
-</script>
+imgInput.onchange=e=>{
+let reader=new FileReader();
+reader.onload=()=>{
+let msg={from:username,image:reader.result};
+socket.emit("send_global",msg);
+};
+reader.readAsDataURL(e.target.files[0]);
+};
 
+function setAvatar(){
+let file=avatarInput.files[0];
+let reader=new FileReader();
+reader.onload=()=>socket.emit("setAvatar",reader.result);
+reader.readAsDataURL(file);
+}
+
+function setBg(){
+let file=bgInput.files[0];
+let reader=new FileReader();
+reader.onload=()=>chat.style.backgroundImage="url("+reader.result+")";
+reader.readAsDataURL(file);
+}
+
+function recordVoice(){
+navigator.mediaDevices.getUserMedia({audio:true}).then(stream=>{
+mediaRecorder=new MediaRecorder(stream);
+let chunks=[];
+mediaRecorder.ondataavailable=e=>chunks.push(e.data);
+mediaRecorder.onstop=()=>{
+let blob=new Blob(chunks);
+let reader=new FileReader();
+reader.onload=()=>{
+let msg={from:username,voice:reader.result};
+socket.emit("send_global",msg);
+};
+reader.readAsDataURL(blob);
+};
+mediaRecorder.start();
+setTimeout(()=>mediaRecorder.stop(),3000);
+});
+}
+</script>
 </body>
 </html>
