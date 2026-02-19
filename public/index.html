@@ -5,25 +5,27 @@
 <title>Messenger</title>
 <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 <style>
-body { font-family: Arial; display:flex; height:100vh; margin:0; }
-#users { width:200px; background:#222; color:white; padding:10px; }
+body { margin:0; font-family:Arial; display:flex; height:100vh; }
+#users { width:200px; background:#222; color:white; padding:10px; overflow-y:auto; }
 #chat { flex:1; display:flex; flex-direction:column; }
-#messages { flex:1; overflow-y:auto; padding:10px; }
-#input { display:flex; }
-input { flex:1; padding:5px; }
-button { padding:5px; }
+#messages { flex:1; padding:10px; overflow-y:auto; }
+#bottom { display:flex; }
+input { flex:1; padding:10px; font-size:16px; }
+button { padding:10px; font-size:16px; }
 .message { margin:5px 0; }
 .me { color:blue; }
 </style>
 </head>
 <body>
 
-<div id="users"></div>
+<div id="users">
+<h3>Пользователи</h3>
+</div>
 
 <div id="chat">
 <div id="messages"></div>
-<div id="input">
-<input id="messageInput" placeholder="Сообщение">
+<div id="bottom">
+<input id="msgInput" placeholder="Сообщение...">
 <button onclick="sendMessage()">Отправить</button>
 <button onclick="callUser()">📞</button>
 </div>
@@ -33,53 +35,67 @@ button { padding:5px; }
 
 <script>
 const socket = io();
-let myName = prompt("Введите имя:");
+let myName = prompt("Введите имя");
 let currentChat = null;
-let localStream;
-let peer;
+let localStream = null;
+let peer = null;
 
 socket.emit("join", myName);
 
-navigator.mediaDevices.getUserMedia({ audio: true })
+// Получаем микрофон
+navigator.mediaDevices.getUserMedia({ audio:true })
 .then(stream => {
   localStream = stream;
 });
 
-socket.on("users", (users) => {
+// Обновление списка пользователей
+socket.on("users", (userList) => {
   const usersDiv = document.getElementById("users");
   usersDiv.innerHTML = "<h3>Пользователи</h3>";
 
-  for (let id in users) {
-    if (users[id] !== myName) {
+  userList.forEach(name => {
+    if (name !== myName) {
       const btn = document.createElement("button");
-      btn.innerText = users[id];
+      btn.innerText = name;
       btn.onclick = () => {
-        currentChat = id;
+        currentChat = name;
         document.getElementById("messages").innerHTML = "";
       };
       usersDiv.appendChild(btn);
       usersDiv.appendChild(document.createElement("br"));
     }
-  }
+  });
 });
 
+// Отправка сообщения
 function sendMessage() {
-  const input = document.getElementById("messageInput");
-  if (!currentChat) return alert("Выберите пользователя");
+  if (!currentChat) {
+    alert("Выберите пользователя");
+    return;
+  }
+
+  const input = document.getElementById("msgInput");
+  const text = input.value.trim();
+  if (!text) return;
 
   socket.emit("private_message", {
+    from: myName,
     to: currentChat,
-    message: input.value
+    message: text
   });
 
-  addMessage("Я: " + input.value, true);
+  addMessage("Я: " + text, true);
   input.value = "";
 }
 
+// Получение сообщения
 socket.on("private_message", (data) => {
-  addMessage(data.from + ": " + data.message, false);
+  if (data.from === currentChat) {
+    addMessage(data.from + ": " + data.message, false);
+  }
 });
 
+// Добавление сообщения в чат
 function addMessage(text, me) {
   const div = document.createElement("div");
   div.className = "message";
@@ -91,18 +107,25 @@ function addMessage(text, me) {
 // ===== ЗВОНОК =====
 
 function callUser() {
-  if (!currentChat) return alert("Выберите пользователя");
+  if (!currentChat) {
+    alert("Выберите пользователя");
+    return;
+  }
+
   peer = createPeer(currentChat);
 
-  localStream.getTracks().forEach(track => {
-    peer.addTrack(track, localStream);
-  });
+  if (localStream) {
+    localStream.getTracks().forEach(track => {
+      peer.addTrack(track, localStream);
+    });
+  }
 
   peer.createOffer().then(offer => {
     peer.setLocalDescription(offer);
     socket.emit("call-user", {
+      from: myName,
       to: currentChat,
-      offer
+      offer: offer
     });
   });
 }
@@ -110,22 +133,27 @@ function callUser() {
 socket.on("incoming-call", async (data) => {
   peer = createPeer(data.from);
 
-  localStream.getTracks().forEach(track => {
-    peer.addTrack(track, localStream);
-  });
+  if (localStream) {
+    localStream.getTracks().forEach(track => {
+      peer.addTrack(track, localStream);
+    });
+  }
 
   await peer.setRemoteDescription(new RTCSessionDescription(data.offer));
   const answer = await peer.createAnswer();
   await peer.setLocalDescription(answer);
 
-socket.emit("private_message", {
-  to: currentChat,
-  from: myName,
-  message: input.value
+  socket.emit("answer-call", {
+    from: myName,
+    to: data.from,
+    answer: answer
+  });
 });
 
 socket.on("call-answered", async (data) => {
-  await peer.setRemoteDescription(new RTCSessionDescription(data.answer));
+  if (peer) {
+    await peer.setRemoteDescription(new RTCSessionDescription(data.answer));
+  }
 });
 
 socket.on("ice-candidate", async (candidate) => {
@@ -134,23 +162,24 @@ socket.on("ice-candidate", async (candidate) => {
   }
 });
 
-function createPeer(targetId) {
-  const peer = new RTCPeerConnection();
+function createPeer(targetName) {
+  const pc = new RTCPeerConnection();
 
-  peer.onicecandidate = event => {
+  pc.onicecandidate = event => {
     if (event.candidate) {
       socket.emit("ice-candidate", {
-        to: targetId,
+        from: myName,
+        to: targetName,
         candidate: event.candidate
       });
     }
   };
 
-  peer.ontrack = event => {
+  pc.ontrack = event => {
     document.getElementById("remoteAudio").srcObject = event.streams[0];
   };
 
-  return peer;
+  return pc;
 }
 </script>
 
