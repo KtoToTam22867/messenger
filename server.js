@@ -10,8 +10,8 @@ const io = new Server(server, {
 
 app.use(express.static("public"));
 
-let users = {}; // { username: socket.id }
-let privateMessages = {}; // { room: [] }
+let users = {}; // username -> socket.id
+let privateMessages = {}; // room -> messages[]
 
 function getRoom(a,b){
   return [a,b].sort().join("_");
@@ -19,55 +19,33 @@ function getRoom(a,b){
 
 io.on("connection", (socket)=>{
 
-  socket.on("join", name=>{
-    socket.username = name;
-    users[name] = socket.id;
+  socket.on("join", username=>{
+    socket.username = username;
+    users[username] = socket.id;
     io.emit("users", Object.keys(users));
   });
 
-  socket.on("send_message", ({to, type, content})=>{
+  socket.on("send_global", msg=>{
+    io.emit("new_global", msg);
+  });
 
-    if(to){ // приватный чат
-      const room = getRoom(socket.username, to);
+  socket.on("send_private", ({to, message})=>{
+    const room = getRoom(socket.username, to);
 
-      if(!privateMessages[room])
-        privateMessages[room] = [];
+    if(!privateMessages[room]) privateMessages[room] = [];
 
-      const msg = {
-        from: socket.username,
-        to,
-        type,
-        content
-      };
+    privateMessages[room].push(message);
 
-      privateMessages[room].push(msg);
-
-      if(users[to])
-        io.to(users[to]).emit("new_message", msg);
-
-      socket.emit("new_message", msg);
-
-    } else { // глобальный чат
-      const msg = {
-        from: socket.username,
-        type,
-        content
-      };
-
-      io.emit("new_message", msg);
+    if(users[to]){
+      io.to(users[to]).emit("new_private", message);
     }
 
+    socket.emit("new_private", message);
   });
 
   socket.on("load_private", other=>{
     const room = getRoom(socket.username, other);
     socket.emit("private_history", privateMessages[room] || []);
-  });
-
-  socket.on("typing", to=>{
-    if(to && users[to]){
-      io.to(users[to]).emit("typing", socket.username);
-    }
   });
 
   socket.on("disconnect", ()=>{
@@ -77,6 +55,4 @@ io.on("connection", (socket)=>{
 
 });
 
-server.listen(3000, ()=>{
-  console.log("Asylumgram v5 Lite running");
-});
+server.listen(3000, ()=>console.log("Asylumgram v6 running"));

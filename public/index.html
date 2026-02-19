@@ -4,26 +4,55 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Asylumgram</title>
-
 <script src="/socket.io/socket.io.js"></script>
 
 <style>
 body{
   margin:0;
-  font-family: Arial, sans-serif;
+  font-family:Arial;
   background:#0f0f0f;
   color:white;
   display:flex;
-  flex-direction:column;
   height:100vh;
 }
 
-header{
-  background:#1f1f1f;
+/* Левая панель */
+#sidebar{
+  width:220px;
+  background:#1a1a1a;
+  overflow-y:auto;
+  padding:10px;
+}
+
+.user{
+  padding:8px;
+  cursor:pointer;
+  border-radius:8px;
+}
+
+.user:hover{
+  background:#2a2a2a;
+}
+
+.online{
+  width:8px;
+  height:8px;
+  background:#00ff55;
+  border-radius:50%;
+  display:inline-block;
+  margin-right:5px;
+}
+
+/* Чат */
+#chat{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+}
+
+#header{
   padding:15px;
-  font-size:18px;
-  font-weight:bold;
-  text-align:center;
+  background:#1f1f1f;
   border-bottom:1px solid #333;
 }
 
@@ -36,9 +65,9 @@ header{
 }
 
 .message{
-  max-width:75%;
-  padding:8px 12px;
+  max-width:70%;
   margin:5px 0;
+  padding:8px 12px;
   border-radius:15px;
   word-wrap:break-word;
 }
@@ -53,14 +82,19 @@ header{
   align-self:flex-start;
 }
 
+img{
+  max-width:100%;
+  border-radius:10px;
+  margin-top:5px;
+}
+
 #bottom{
   display:flex;
   padding:10px;
   background:#1f1f1f;
-  border-top:1px solid #333;
 }
 
-#msgInput{
+#input{
   flex:1;
   padding:10px;
   border:none;
@@ -71,57 +105,65 @@ header{
 }
 
 button{
-  margin-left:8px;
-  padding:10px 15px;
+  margin-left:5px;
   border:none;
+  padding:10px;
   border-radius:20px;
   background:#0088cc;
   color:white;
-  font-weight:bold;
 }
 
-img.chat-img{
-  max-width:100%;
-  border-radius:10px;
-  margin-top:5px;
+/* Мобильная адаптация */
+@media(max-width:700px){
+  #sidebar{
+    display:none;
+  }
 }
 </style>
 </head>
 
 <body>
 
-<header>Asylumgram — Глобальный чат</header>
+<div id="sidebar"></div>
 
-<div id="messages"></div>
+<div id="chat">
+  <div id="header">Глобальный чат</div>
+  <div id="messages"></div>
 
-<div id="bottom">
-  <input id="msgInput" placeholder="Сообщение...">
-  <input type="file" id="imageInput" style="display:none">
-  <button onclick="sendMessage()">➤</button>
+  <div id="bottom">
+    <input id="input" placeholder="Сообщение...">
+    <input type="file" id="imageInput" style="display:none">
+    <button onclick="sendText()">➤</button>
+    <button onclick="sendImage()">📎</button>
+  </div>
 </div>
 
 <script>
 const socket = io();
 let username = prompt("Ваше имя?");
-if(!username) username = "Гость";
+if(!username) username="Гость"+Math.floor(Math.random()*1000);
 
 socket.emit("join", username);
 
+let currentChat = "global";
+
+const sidebar = document.getElementById("sidebar");
 const messagesDiv = document.getElementById("messages");
-const input = document.getElementById("msgInput");
+const header = document.getElementById("header");
+const input = document.getElementById("input");
 
 function addMessage(msg){
   const div = document.createElement("div");
   div.classList.add("message");
 
-  if(msg.from === username){
+  if(msg.from===username){
     div.classList.add("me");
   } else {
     div.classList.add("other");
   }
 
-  if(msg.type === "image"){
-    div.innerHTML = "<b>"+msg.from+":</b><br><img class='chat-img' src='"+msg.content+"'>";
+  if(msg.type==="image"){
+    div.innerHTML = "<b>"+msg.from+":</b><br><img src='"+msg.content+"'>";
   } else {
     div.innerHTML = "<b>"+msg.from+":</b> "+msg.content;
   }
@@ -130,24 +172,91 @@ function addMessage(msg){
   messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
 
-socket.on("new_message", msg=>{
-  addMessage(msg);
+socket.on("users", users=>{
+  sidebar.innerHTML="<h3>Онлайн</h3>";
+  users.forEach(u=>{
+    if(u!==username){
+      const div=document.createElement("div");
+      div.classList.add("user");
+      div.innerHTML="<span class='online'></span>"+u;
+      div.onclick=()=>{
+        currentChat=u;
+        header.innerText="Личные: "+u;
+        messagesDiv.innerHTML="";
+        socket.emit("load_private", u);
+      };
+      sidebar.appendChild(div);
+    }
+  });
 });
 
-function sendMessage(){
-  const text = input.value.trim();
-  if(text){
-    socket.emit("send_message", {type:"text", content:text});
-    input.value="";
+socket.on("new_global", msg=>{
+  if(currentChat==="global"){
+    addMessage(msg);
   }
+});
+
+socket.on("new_private", msg=>{
+  if(currentChat===msg.from || currentChat===msg.to){
+    addMessage(msg);
+  }
+});
+
+socket.on("private_history", history=>{
+  messagesDiv.innerHTML="";
+  history.forEach(addMessage);
+});
+
+function sendText(){
+  const text=input.value.trim();
+  if(!text) return;
+
+  const msg={
+    from:username,
+    to:currentChat,
+    type:"text",
+    content:text
+  };
+
+  if(currentChat==="global"){
+    socket.emit("send_global", msg);
+  } else {
+    socket.emit("send_private",{to:currentChat,message:msg});
+  }
+
+  input.value="";
 }
 
-input.addEventListener("keypress", e=>{
-  if(e.key==="Enter"){
-    sendMessage();
-  }
+function sendImage(){
+  document.getElementById("imageInput").click();
+}
+
+document.getElementById("imageInput").addEventListener("change",function(){
+  const file=this.files[0];
+  if(!file) return;
+
+  const reader=new FileReader();
+  reader.onload=function(e){
+    const msg={
+      from:username,
+      to:currentChat,
+      type:"image",
+      content:e.target.result
+    };
+
+    if(currentChat==="global"){
+      socket.emit("send_global", msg);
+    } else {
+      socket.emit("send_private",{to:currentChat,message:msg});
+    }
+  };
+
+  reader.readAsDataURL(file);
 });
 
+input.addEventListener("keypress",e=>{
+  if(e.key==="Enter") sendText();
+});
 </script>
 
 </body>
