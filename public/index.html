@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Asylumgram</title>
+<title>Asylumgram PRO</title>
 <script src="/socket.io/socket.io.js"></script>
 
 <style>
@@ -15,8 +15,7 @@ body{
   height:100vh;
 }
 
-/* ===== LOGIN ===== */
-#login{
+#auth{
   display:flex;
   flex-direction:column;
   justify-content:center;
@@ -24,23 +23,22 @@ body{
   height:100vh;
 }
 
-#login input{
-  padding:12px;
-  border:none;
-  border-radius:10px;
+#auth input{
+  padding:10px;
   margin:5px;
+  border:none;
+  border-radius:8px;
   width:200px;
 }
 
-#login button{
-  padding:10px 20px;
+#auth button{
+  padding:10px 15px;
   border:none;
-  border-radius:10px;
+  border-radius:8px;
   background:#0088cc;
   color:white;
 }
 
-/* ===== APP ===== */
 #app{
   display:none;
   height:100vh;
@@ -54,16 +52,13 @@ body{
   overflow-y:auto;
 }
 
-.chatBtn{
-  padding:10px;
+.user{
+  padding:8px;
   cursor:pointer;
   border-radius:8px;
-  margin-bottom:5px;
 }
 
-.chatBtn:hover{
-  background:#2a2a2a;
-}
+.user:hover{ background:#2a2a2a; }
 
 .onlineDot{
   width:8px;
@@ -71,7 +66,7 @@ body{
   background:#00ff55;
   border-radius:50%;
   display:inline-block;
-  margin-right:6px;
+  margin-right:5px;
 }
 
 #chat{
@@ -83,7 +78,6 @@ body{
 #header{
   padding:15px;
   background:#1f1f1f;
-  border-bottom:1px solid #333;
 }
 
 #messages{
@@ -99,7 +93,6 @@ body{
   margin:5px 0;
   padding:8px 12px;
   border-radius:15px;
-  word-wrap:break-word;
 }
 
 .me{
@@ -110,6 +103,12 @@ body{
 .other{
   background:#262626;
   align-self:flex-start;
+}
+
+img{
+  max-width:100%;
+  border-radius:10px;
+  margin-top:5px;
 }
 
 #bottom{
@@ -125,7 +124,6 @@ body{
   border-radius:20px;
   background:#2a2a2a;
   color:white;
-  outline:none;
 }
 
 button{
@@ -135,10 +133,8 @@ button{
   border-radius:20px;
   background:#0088cc;
   color:white;
-  cursor:pointer;
 }
 
-/* MOBILE */
 @media(max-width:700px){
   #sidebar{ display:none; }
 }
@@ -147,18 +143,18 @@ button{
 
 <body>
 
-<!-- LOGIN -->
-<div id="login">
-  <h2>Asylumgram</h2>
-  <input id="nickname" placeholder="Введите ник">
-  <button onclick="register()">Войти</button>
+<div id="auth">
+  <h2>Asylumgram PRO</h2>
+  <input id="username" placeholder="Ник">
+  <input id="password" type="password" placeholder="Пароль">
+  <button onclick="register()">Регистрация</button>
+  <button onclick="login()">Вход</button>
   <div id="error" style="color:red;"></div>
 </div>
 
-<!-- APP -->
 <div id="app">
   <div id="sidebar">
-    <div class="chatBtn" onclick="openGlobal()">🌍 Глобальный чат</div>
+    <div class="user" onclick="openGlobal()">🌍 Глобальный чат</div>
     <hr>
     <div id="users"></div>
   </div>
@@ -166,10 +162,11 @@ button{
   <div id="chat">
     <div id="header">Глобальный чат</div>
     <div id="messages"></div>
-
     <div id="bottom">
       <input id="input" placeholder="Сообщение...">
+      <input type="file" id="imageInput" style="display:none">
       <button onclick="sendText()">➤</button>
+      <button onclick="sendImage()">📎</button>
     </div>
   </div>
 </div>
@@ -179,108 +176,114 @@ const socket = io();
 let username = null;
 let currentChat = "global";
 
-/* ===== РЕГИСТРАЦИЯ ===== */
 function register(){
-  const nick = document.getElementById("nickname").value.trim();
-  if(!nick) return;
-
-  socket.emit("register", nick, (res)=>{
+  socket.emit("register",{
+    username:usernameInput.value,
+    password:passwordInput.value
+  },res=>{
     if(res.success){
-      username = nick;
-      localStorage.setItem("nickname", nick);
-      document.getElementById("login").style.display="none";
-      document.getElementById("app").style.display="flex";
+      alert("Регистрация успешна");
     } else {
-      document.getElementById("error").innerText = res.message;
+      error.innerText=res.message;
     }
   });
 }
 
-/* Автовход */
-const savedNick = localStorage.getItem("nickname");
-if(savedNick){
-  document.getElementById("nickname").value = savedNick;
+function login(){
+  socket.emit("login",{
+    username:usernameInput.value,
+    password:passwordInput.value
+  },res=>{
+    if(res.success){
+      username=usernameInput.value;
+      auth.style.display="none";
+      app.style.display="flex";
+    } else {
+      error.innerText=res.message;
+    }
+  });
 }
-
-/* ===== ЧАТЫ ===== */
 
 function openGlobal(){
-  currentChat = "global";
-  document.getElementById("header").innerText = "Глобальный чат";
-  document.getElementById("messages").innerHTML="";
+  currentChat="global";
+  header.innerText="Глобальный чат";
+  messages.innerHTML="";
 }
 
-/* Онлайн список */
-socket.on("users", users=>{
-  const usersDiv = document.getElementById("users");
+socket.on("users",users=>{
   usersDiv.innerHTML="";
-
   users.forEach(u=>{
-    if(u !== username){
-      const div = document.createElement("div");
-      div.className="chatBtn";
-      div.innerHTML = "<span class='onlineDot'></span>"+u;
+    if(u!==username){
+      const div=document.createElement("div");
+      div.className="user";
+      div.innerHTML="<span class='onlineDot'></span>"+u;
       div.onclick=()=>{
-        currentChat = u;
-        document.getElementById("header").innerText = "Личные: "+u;
-        document.getElementById("messages").innerHTML="";
-        socket.emit("load_private", u);
+        currentChat=u;
+        header.innerText="Личные: "+u;
+        messages.innerHTML="";
+        socket.emit("load_private",u);
       };
       usersDiv.appendChild(div);
     }
   });
 });
 
-/* Сообщения */
-socket.on("new_global", msg=>{
-  if(currentChat==="global")
+socket.on("new_global",msg=>{
+  if(currentChat==="global") addMessage(msg);
+});
+
+socket.on("new_private",msg=>{
+  if(currentChat===msg.from||currentChat===msg.to)
     addMessage(msg);
 });
 
-socket.on("new_private", msg=>{
-  if(currentChat===msg.from || currentChat===msg.to)
-    addMessage(msg);
-});
-
-socket.on("private_history", history=>{
+socket.on("private_history",history=>{
   history.forEach(addMessage);
 });
 
-/* КИК */
-socket.on("kicked", reason=>{
-  alert(reason);
-  localStorage.removeItem("nickname");
-  location.reload();
-});
-
-/* ===== ОТПРАВКА ===== */
 function sendText(){
-  const input = document.getElementById("input");
-  const text = input.value.trim();
+  const text=input.value.trim();
   if(!text) return;
 
-  const msg = {
-    from: username,
-    to: currentChat,
-    content: text
-  };
+  const msg={from:username,to:currentChat,type:"text",content:text};
 
-  if(currentChat==="global"){
-    socket.emit("send_global", msg);
-  } else {
-    socket.emit("send_private", {to: currentChat, message: msg});
-  }
+  if(currentChat==="global")
+    socket.emit("send_global",msg);
+  else
+    socket.emit("send_private",{to:currentChat,message:msg});
 
   input.value="";
 }
 
-/* Добавление сообщения */
+function sendImage(){
+  imageInput.click();
+}
+
+imageInput.addEventListener("change",()=>{
+  const file=imageInput.files[0];
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const msg={from:username,to:currentChat,type:"image",content:e.target.result};
+    if(currentChat==="global")
+      socket.emit("send_global",msg);
+    else
+      socket.emit("send_private",{to:currentChat,message:msg});
+  };
+  reader.readAsDataURL(file);
+});
+
 function addMessage(msg){
-  const div = document.createElement("div");
+  const div=document.createElement("div");
   div.classList.add("message");
-  div.classList.add(msg.from===username ? "me" : "other");
-  div.innerText = msg.from + ": " + msg.content;
-  document.getElementById("messages").appendChild(div);
+  div.classList.add(msg.from===username?"me":"other");
+
+  if(msg.type==="image")
+    div.innerHTML="<b>"+msg.from+":</b><br><img src='"+msg.content+"'>";
+  else
+    div.innerText=msg.from+": "+msg.content;
+
+  messages.appendChild(div);
+  messages.scrollTop=messages.scrollHeight;
 }
 </script>
 
