@@ -8,7 +8,7 @@ const io = new Server(server);
 
 app.use(express.static("public"));
 
-let users = {};
+let users = {}; // socket.id -> username
 
 io.on("connection", (socket) => {
 
@@ -17,11 +17,14 @@ io.on("connection", (socket) => {
     io.emit("users", users);
   });
 
-  socket.on("message", (data) => {
-    io.emit("message", data);
+  socket.on("private_message", (data) => {
+    io.to(data.to).emit("private_message", {
+      from: users[socket.id],
+      message: data.message
+    });
   });
 
-  // Сигналы для звонков
+  // ===== ЗВОНОК =====
   socket.on("call-user", (data) => {
     io.to(data.to).emit("incoming-call", {
       from: socket.id,
