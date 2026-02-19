@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Messenger</title>
+<script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+<style>
+body { font-family: Arial; display: flex; height: 100vh; margin:0; }
+#contacts { width: 200px; background:#1e1e1e; color:white; padding:10px; }
+#chat { flex:1; display:flex; flex-direction:column; }
+#messages { flex:1; padding:10px; overflow-y:auto; }
+input, button { padding:5px; margin:3px; }
+.message { margin:5px 0; }
+.me { color:blue; }
+</style>
+</head>
+<body>
+
+<div id="contacts">
+<h3>Контакты</h3>
+<input id="newContact" placeholder="Имя">
+<button onclick="addContact()">Добавить</button>
+<ul id="contactList"></ul>
+</div>
+
+<div id="chat">
+<div id="messages"></div>
+<div>
+<input id="messageInput" placeholder="Сообщение">
+<button onclick="sendMessage()">Отправить</button>
+</div>
+</div>
+
+<script>
+const socket = io();
+
+let username = prompt("Введите ваше имя:");
+socket.emit("register", username);
+
+let currentChat = null;
+let contacts = [];
+
+function addContact() {
+  let name = document.getElementById("newContact").value;
+  if (!contacts.includes(name)) {
+    contacts.push(name);
+    renderContacts();
+  }
+}
+
+function renderContacts() {
+  let list = document.getElementById("contactList");
+  list.innerHTML = "";
+  contacts.forEach(name => {
+    let li = document.createElement("li");
+    li.innerText = name;
+    li.onclick = () => {
+      currentChat = name;
+      document.getElementById("messages").innerHTML = "";
+    };
+    list.appendChild(li);
+  });
+}
+
+function sendMessage() {
+  let input = document.getElementById("messageInput");
+  if (!currentChat) return alert("Выберите контакт");
+  socket.emit("private_message", {
+    to: currentChat,
+    message: input.value
+  });
+  input.value = "";
+}
+
+socket.on("private_message", (msg) => {
+  if (msg.from === currentChat || msg.to === currentChat) {
+    let div = document.createElement("div");
+    div.classList.add("message");
+    if (msg.from === username) div.classList.add("me");
+    div.innerText = msg.from + ": " + msg.message;
+    document.getElementById("messages").appendChild(div);
+  }
+});
+</script>
+
+</body>
+</html>
