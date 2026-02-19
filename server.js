@@ -1,50 +1,51 @@
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
-const cors = require("cors");
-const fs = require("fs");
 
 const app = express();
-app.use(cors());
-app.use(express.static("public"));
-
 const server = http.createServer(app);
 const io = new Server(server);
 
-let users = {};
-let messages = [];
+app.use(express.static("public"));
 
-if (fs.existsSync("messages.json")) {
-  messages = JSON.parse(fs.readFileSync("messages.json"));
-}
+let users = {};
 
 io.on("connection", (socket) => {
 
-  socket.on("register", (username) => {
-    users[username] = socket.id;
-    socket.username = username;
+  socket.on("join", (username) => {
+    users[socket.id] = username;
+    io.emit("users", users);
   });
 
-  socket.on("private_message", ({ to, message }) => {
-    const msg = {
-      from: socket.username,
-      to,
-      message,
-      time: new Date()
-    };
+  socket.on("message", (data) => {
+    io.emit("message", data);
+  });
 
-    messages.push(msg);
-    fs.writeFileSync("messages.json", JSON.stringify(messages));
+  // Сигналы для звонков
+  socket.on("call-user", (data) => {
+    io.to(data.to).emit("incoming-call", {
+      from: socket.id,
+      offer: data.offer
+    });
+  });
 
-    if (users[to]) {
-      io.to(users[to]).emit("private_message", msg);
-    }
+  socket.on("answer-call", (data) => {
+    io.to(data.to).emit("call-answered", {
+      answer: data.answer
+    });
+  });
 
-    socket.emit("private_message", msg);
+  socket.on("ice-candidate", (data) => {
+    io.to(data.to).emit("ice-candidate", data.candidate);
+  });
+
+  socket.on("disconnect", () => {
+    delete users[socket.id];
+    io.emit("users", users);
   });
 
 });
 
-server.listen(3000, () => {
-  console.log("Сервер запущен: http://localhost:3000");
+server.listen(process.env.PORT || 3000, () => {
+  console.log("Server started");
 });
