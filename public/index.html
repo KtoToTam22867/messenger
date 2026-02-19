@@ -2,6 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Asylumgram</title>
 <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 
@@ -16,12 +17,11 @@ body {
 }
 
 #sidebar {
-  width:250px;
+  width:260px;
   background:#1a1a1a;
-  padding:15px;
+  padding:10px;
   box-sizing:border-box;
-  display:flex;
-  flex-direction:column;
+  overflow-y:auto;
 }
 
 #sidebar h2 {
@@ -29,19 +29,22 @@ body {
   margin:0 0 10px 0;
 }
 
-#users {
-  flex:1;
-  overflow-y:auto;
-}
-
 .user {
   padding:8px;
   cursor:pointer;
   border-radius:6px;
+  display:flex;
+  align-items:center;
+  gap:8px;
 }
 
-.user:hover {
-  background:#333;
+.user:hover { background:#333; }
+
+.dot {
+  width:10px;
+  height:10px;
+  border-radius:50%;
+  background:#4caf50;
 }
 
 #chat {
@@ -58,7 +61,7 @@ body {
 
 #messages {
   flex:1;
-  padding:15px;
+  padding:10px;
   overflow-y:auto;
   display:flex;
   flex-direction:column;
@@ -66,19 +69,19 @@ body {
 
 .message {
   margin-bottom:10px;
-  padding:8px 12px;
+  padding:8px;
   border-radius:10px;
-  max-width:60%;
+  max-width:75%;
+  word-wrap:break-word;
 }
 
-.me {
-  background:#4cafef;
-  align-self:flex-end;
-}
+.me { background:#4cafef; align-self:flex-end; }
+.other { background:#333; align-self:flex-start; }
 
-.other {
-  background:#333;
-  align-self:flex-start;
+.message img {
+  max-width:200px;
+  border-radius:8px;
+  margin-top:5px;
 }
 
 #inputArea {
@@ -93,17 +96,20 @@ body {
   padding:8px;
   border:none;
   border-radius:6px;
-  outline:none;
 }
 
 #sendBtn {
-  margin-left:10px;
-  padding:8px 15px;
+  margin-left:5px;
+  padding:8px 12px;
   border:none;
   border-radius:6px;
   background:#4cafef;
   color:white;
-  cursor:pointer;
+}
+
+@media (max-width:768px){
+  #sidebar { width:100px; }
+  .user span { display:none; }
 }
 </style>
 </head>
@@ -112,7 +118,7 @@ body {
 
 <div id="sidebar">
   <h2>Asylumgram</h2>
-  <input id="username" placeholder="Ваше имя"><br><br>
+  <input id="username" placeholder="Имя"><br><br>
   <button onclick="login()">Войти</button>
   <hr>
   <div id="users"></div>
@@ -121,102 +127,103 @@ body {
 <div id="chat">
   <div id="chatHeader">Глобальный чат</div>
   <div id="messages"></div>
+
   <div id="inputArea">
+    <input type="file" id="photoInput" accept="image/*">
     <input id="msgInput" placeholder="Сообщение...">
-    <button id="sendBtn">Отправить</button>
+    <button id="sendBtn">➤</button>
   </div>
 </div>
 
 <script>
 const socket = io();
-
-let myName = "";
-let currentChat = "global";
+let myName="";
+let currentChat="global";
 
 function login(){
-  const name = document.getElementById("username").value.trim();
-  if(!name) return alert("Введите имя");
-  myName = name;
-  socket.emit("join", name);
+  myName=document.getElementById("username").value.trim();
+  if(!myName) return alert("Введите имя");
+  socket.emit("join", myName);
 }
 
-document.getElementById("sendBtn").onclick = sendMessage;
-document.getElementById("msgInput").addEventListener("keydown", e=>{
+document.getElementById("sendBtn").onclick=sendMessage;
+document.getElementById("msgInput").addEventListener("keydown",e=>{
   if(e.key==="Enter") sendMessage();
 });
 
 function sendMessage(){
-  const text = document.getElementById("msgInput").value.trim();
-  if(!text) return;
+  const text=document.getElementById("msgInput").value.trim();
+  const file=document.getElementById("photoInput").files[0];
 
-  if(currentChat==="global"){
-    socket.emit("send_global", text);
-  } else {
-    socket.emit("send_private", { to: currentChat, message:text });
+  if(file){
+    const reader=new FileReader();
+    reader.onload=()=>{
+      sendData("image",reader.result);
+    };
+    reader.readAsDataURL(file);
+    document.getElementById("photoInput").value="";
   }
 
-  document.getElementById("msgInput").value="";
+  if(text){
+    sendData("text",text);
+    document.getElementById("msgInput").value="";
+  }
 }
 
-socket.on("users", list=>{
-  const usersDiv = document.getElementById("users");
-  usersDiv.innerHTML="";
+function sendData(type,content){
+  if(currentChat==="global"){
+    socket.emit("send_global",{type,content});
+  } else {
+    socket.emit("send_private",{to:currentChat,type,content});
+  }
+}
 
-  const globalDiv = document.createElement("div");
-  globalDiv.className="user";
-  globalDiv.innerText="🌍 Глобальный чат";
-  globalDiv.onclick=()=>{
-    currentChat="global";
-    document.getElementById("chatHeader").innerText="Глобальный чат";
-    document.getElementById("messages").innerHTML="";
-    socket.emit("load_global");
-  };
-  usersDiv.appendChild(globalDiv);
+socket.on("users",list=>{
+  const div=document.getElementById("users");
+  div.innerHTML="";
 
   list.forEach(user=>{
     if(user!==myName){
-      const div=document.createElement("div");
-      div.className="user";
-      div.innerText=user;
-      div.onclick=()=>{
+      const u=document.createElement("div");
+      u.className="user";
+      u.innerHTML=`<div class="dot"></div><span>${user}</span>`;
+      u.onclick=()=>{
         currentChat=user;
         document.getElementById("chatHeader").innerText=user;
         document.getElementById("messages").innerHTML="";
-        socket.emit("load_private", user);
+        socket.emit("load_private",user);
       };
-      usersDiv.appendChild(div);
+      div.appendChild(u);
     }
   });
 });
 
-socket.on("load_global", history=>{
-  document.getElementById("messages").innerHTML="";
-  history.forEach(addGlobalMessage);
+socket.on("new_global",data=>{
+  if(currentChat!=="global") return;
+  addMessage(data.user,data.type,data.content);
 });
 
-socket.on("new_global", addGlobalMessage);
-
-function addGlobalMessage(data){
-  const div=document.createElement("div");
-  div.className="message "+(data.user===myName?"me":"other");
-  div.innerText=data.user+": "+data.message;
-  document.getElementById("messages").appendChild(div);
-}
-
-socket.on("private_history", history=>{
-  document.getElementById("messages").innerHTML="";
-  history.forEach(addPrivateMessage);
+socket.on("new_private",data=>{
+  if(currentChat!==data.from && currentChat!==data.to) return;
+  addMessage(data.from,data.type,data.content);
 });
 
-socket.on("new_private", addPrivateMessage);
+socket.on("private_history",history=>{
+  history.forEach(msg=>{
+    addMessage(msg.from,msg.type,msg.content);
+  });
+});
 
-function addPrivateMessage(data){
-  if(currentChat==="global") return;
-  if(data.from!==currentChat && data.to!==currentChat) return;
-
+function addMessage(user,type,content){
   const div=document.createElement("div");
-  div.className="message "+(data.from===myName?"me":"other");
-  div.innerText=(data.from===myName?"Вы":data.from)+": "+data.message;
+  div.className="message "+(user===myName?"me":"other");
+
+  if(type==="text"){
+    div.innerText=user+": "+content;
+  } else {
+    div.innerHTML=user+":<br><img src='"+content+"'>";
+  }
+
   document.getElementById("messages").appendChild(div);
 }
 </script>

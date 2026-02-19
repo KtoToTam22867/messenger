@@ -4,75 +4,71 @@ const { Server } = require("socket.io");
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  maxHttpBufferSize: 1e8
+});
 
 app.use(express.static("public"));
 
-let users = {}; // name -> socket.id
+let users = {};
 let messages = {
   global: [],
-  private: {} // "user1_user2": []
+  private: {}
 };
 
-function getPrivateRoom(a, b) {
-  return [a, b].sort().join("_");
+function getRoom(a,b){
+  return [a,b].sort().join("_");
 }
 
-io.on("connection", (socket) => {
+io.on("connection", (socket)=>{
 
-  socket.on("join", (name) => {
+  socket.on("join", name=>{
     socket.username = name;
     users[name] = socket.id;
-
     io.emit("users", Object.keys(users));
-    socket.emit("load_global", messages.global);
   });
 
-  socket.on("send_global", (msg) => {
-    const data = {
+  socket.on("send_global", data=>{
+    const msg = {
       user: socket.username,
-      message: msg
+      type: data.type,
+      content: data.content
     };
-
-    messages.global.push(data);
-    io.emit("new_global", data);
+    messages.global.push(msg);
+    io.emit("new_global", msg);
   });
 
-  socket.on("send_private", ({ to, message }) => {
-    const room = getPrivateRoom(socket.username, to);
+  socket.on("send_private", ({to, type, content})=>{
+    const room = getRoom(socket.username, to);
+    if(!messages.private[room]) messages.private[room] = [];
 
-    if (!messages.private[room]) {
-      messages.private[room] = [];
-    }
-
-    const data = {
+    const msg = {
       from: socket.username,
       to,
-      message
+      type,
+      content
     };
 
-    messages.private[room].push(data);
+    messages.private[room].push(msg);
 
-    const targetId = users[to];
-    if (targetId) {
-      io.to(targetId).emit("new_private", data);
-    }
+    const target = users[to];
+    if(target) io.to(target).emit("new_private", msg);
 
-    socket.emit("new_private", data);
+    socket.emit("new_private", msg);
   });
 
-  socket.on("load_private", (otherUser) => {
-    const room = getPrivateRoom(socket.username, otherUser);
+  socket.on("load_private", other=>{
+    const room = getRoom(socket.username, other);
     socket.emit("private_history", messages.private[room] || []);
   });
 
-  socket.on("disconnect", () => {
+  socket.on("disconnect", ()=>{
     delete users[socket.username];
     io.emit("users", Object.keys(users));
   });
 
 });
 
-server.listen(3000, () => {
-  console.log("Asylumgram v3 running on port 3000");
+server.listen(3000, ()=>{
+  console.log("Asylumgram v4 PRO running");
 });
