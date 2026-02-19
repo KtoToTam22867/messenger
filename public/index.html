@@ -81,6 +81,82 @@ socket.on("private_message", (msg) => {
     document.getElementById("messages").appendChild(div);
   }
 });
+// ===== ЗВОНОК =====
+let localStream;
+let peer;
+
+navigator.mediaDevices.getUserMedia({ audio: true })
+.then(stream => {
+  localStream = stream;
+});
+
+document.body.insertAdjacentHTML("beforeend", `
+  <button id="callBtn">📞 Позвонить</button>
+  <audio id="remoteAudio" autoplay></audio>
+`);
+
+document.getElementById("callBtn").onclick = async () => {
+  const targetId = prompt("Вставь socket ID пользователя:");
+  peer = createPeer(targetId);
+
+  localStream.getTracks().forEach(track => {
+    peer.addTrack(track, localStream);
+  });
+
+  const offer = await peer.createOffer();
+  await peer.setLocalDescription(offer);
+
+  socket.emit("call-user", {
+    to: targetId,
+    offer
+  });
+};
+
+socket.on("incoming-call", async (data) => {
+  peer = createPeer(data.from);
+
+  localStream.getTracks().forEach(track => {
+    peer.addTrack(track, localStream);
+  });
+
+  await peer.setRemoteDescription(new RTCSessionDescription(data.offer));
+  const answer = await peer.createAnswer();
+  await peer.setLocalDescription(answer);
+
+  socket.emit("answer-call", {
+    to: data.from,
+    answer
+  });
+});
+
+socket.on("call-answered", async (data) => {
+  await peer.setRemoteDescription(new RTCSessionDescription(data.answer));
+});
+
+socket.on("ice-candidate", async (candidate) => {
+  if (peer) {
+    await peer.addIceCandidate(new RTCIceCandidate(candidate));
+  }
+});
+
+function createPeer(targetId) {
+  const peer = new RTCPeerConnection();
+
+  peer.onicecandidate = event => {
+    if (event.candidate) {
+      socket.emit("ice-candidate", {
+        to: targetId,
+        candidate: event.candidate
+      });
+    }
+  };
+
+  peer.ontrack = event => {
+    document.getElementById("remoteAudio").srcObject = event.streams[0];
+  };
+
+  return peer;
+}
 </script>
 
 </body>
