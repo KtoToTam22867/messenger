@@ -4,247 +4,218 @@
 <meta charset="UTF-8">
 <title>Messenger</title>
 <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+
 <style>
-body { margin:0; font-family:Arial; display:flex; height:100vh; }
-
-#users {
-  width:220px;
-  background:#1f1f1f;
+body {
+  margin:0;
+  background:#1e1e1e;
   color:white;
-  padding:10px;
-  overflow-y:auto;
+  font-family:Arial;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  height:100vh;
 }
 
-#chat {
-  flex:1;
-  display:flex;
+#callScreen {
+  display:none;
   flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  width:100%;
+  height:100%;
 }
 
-#messages {
-  flex:1;
-  padding:15px;
-  overflow-y:auto;
-  background:#f5f5f5;
+.avatar {
+  width:120px;
+  height:120px;
+  border-radius:50%;
+  background:#555;
+  margin-bottom:15px;
 }
 
-#bottom {
+#status {
+  opacity:0.7;
+  margin-bottom:30px;
+}
+
+.controls {
   display:flex;
-  padding:10px;
-  background:white;
+  gap:20px;
 }
 
-input {
-  flex:1;
-  padding:10px;
-  font-size:16px;
-}
-
-button {
-  padding:8px 12px;
-  margin-left:5px;
+.controls button {
+  width:60px;
+  height:60px;
+  border-radius:50%;
+  border:none;
+  font-size:20px;
   cursor:pointer;
 }
 
-.message { margin:5px 0; }
-.me { color:blue; }
+.red { background:#e53935; color:white; }
+.gray { background:#333; color:white; }
+.green { background:#2e7d32; color:white; }
 
-#callPanel {
-  display:none;
-  background:#222;
-  color:white;
-  padding:10px;
-  display:flex;
-  gap:10px;
-  align-items:center;
-}
-
-video {
-  width:200px;
-  border-radius:8px;
+#mainMenu {
+  text-align:center;
 }
 </style>
 </head>
+
 <body>
 
-<div id="users"><h3>Пользователи</h3></div>
-
-<div id="chat">
-<div id="messages"></div>
-
-<div id="callPanel">
-<span id="callStatus">📞 Идёт звонок</span>
-<button onclick="toggleMic()">🎤</button>
-<button onclick="toggleCamera()">📹</button>
-<button onclick="shareScreen()">🖥</button>
-<button onclick="endCall()">❌</button>
+<div id="mainMenu">
+  <h2>Messenger</h2>
+  <input id="username" placeholder="Ваше имя"><br><br>
+  <input id="callTo" placeholder="Кому звонить"><br><br>
+  <button onclick="startCall()" class="green">Позвонить</button>
 </div>
 
-<div id="bottom">
-<input id="msgInput" placeholder="Сообщение...">
-<button onclick="sendMessage()">Отправить</button>
-<button onclick="callUser()">📞</button>
-</div>
+<div id="callScreen">
+  <div class="avatar"></div>
+  <h2 id="callName"></h2>
+  <div id="status">Соединение...</div>
+
+  <div class="controls">
+    <button class="gray" onclick="toggleScreen()">🖥</button>
+    <button class="gray" onclick="toggleCamera()">📷</button>
+    <button class="red" onclick="endCall()">📞</button>
+    <button class="gray" onclick="toggleMic()">🎤</button>
+  </div>
 </div>
 
-<video id="localVideo" autoplay muted></video>
-<video id="remoteVideo" autoplay></video>
+<audio id="remoteAudio" autoplay></audio>
 
 <script>
 const socket = io();
-let myName = prompt("Введите имя");
-let currentChat = null;
+
+let myName;
+let currentUser;
 let localStream = null;
 let peer = null;
 let micEnabled = true;
-let camEnabled = true;
+let camEnabled = false;
 
-socket.emit("join", myName);
+// ===== ЗАПУСК ЗВОНКА =====
+async function startCall() {
+  myName = document.getElementById("username").value.trim();
+  currentUser = document.getElementById("callTo").value.trim();
 
-navigator.mediaDevices.getUserMedia({ audio:true, video:true })
-.then(stream => {
-  localStream = stream;
-  document.getElementById("localVideo").srcObject = stream;
-});
+  if (!myName || !currentUser) return alert("Введите имена");
 
-socket.on("users", (userList) => {
-  const usersDiv = document.getElementById("users");
-  usersDiv.innerHTML = "<h3>Пользователи</h3>";
+  socket.emit("join", myName);
 
-  userList.forEach(name => {
-    if (name !== myName) {
-      const btn = document.createElement("button");
-      btn.innerText = name;
-      btn.onclick = () => currentChat = name;
-      usersDiv.appendChild(btn);
-      usersDiv.appendChild(document.createElement("br"));
-    }
-  });
-});
-
-function sendMessage() {
-  if (!currentChat) return alert("Выберите пользователя");
-  const input = document.getElementById("msgInput");
-  const text = input.value.trim();
-  if (!text) return;
-
-  socket.emit("private_message", {
-    from: myName,
-    to: currentChat,
-    message: text
-  });
-
-  addMessage("Я: " + text, true);
-  input.value = "";
-}
-
-socket.on("private_message", (data) => {
-  if (data.from === currentChat)
-    addMessage(data.from + ": " + data.message, false);
-});
-
-function addMessage(text, me) {
-  const div = document.createElement("div");
-  div.className = "message";
-  if (me) div.classList.add("me");
-  div.innerText = text;
-  document.getElementById("messages").appendChild(div);
-}
-
-// ===== ЗВОНОК =====
-
-function callUser() {
-  if (!currentChat) return alert("Выберите пользователя");
-
-  document.getElementById("callPanel").style.display = "flex";
-
-  peer = createPeer(currentChat);
-
-  localStream.getTracks().forEach(track => {
-    peer.addTrack(track, localStream);
-  });
-
-  peer.createOffer().then(offer => {
-    peer.setLocalDescription(offer);
-    socket.emit("call-user", {
-      from: myName,
-      to: currentChat,
-      offer
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({
+      audio:true,
+      video:true
     });
+  } catch(e) {
+    alert("Разреши камеру и микрофон");
+    return;
+  }
+
+  document.getElementById("mainMenu").style.display="none";
+  document.getElementById("callScreen").style.display="flex";
+  document.getElementById("callName").innerText=currentUser;
+
+  createPeer();
+
+  const offer = await peer.createOffer();
+  await peer.setLocalDescription(offer);
+
+  socket.emit("call-user", {
+    from:myName,
+    to:currentUser,
+    offer
   });
 }
 
-function endCall() {
-  if (peer) peer.close();
-  peer = null;
-  document.getElementById("callPanel").style.display = "none";
-}
+// ===== СОЗДАНИЕ PEER =====
+function createPeer() {
+  peer = new RTCPeerConnection();
 
-function toggleMic() {
-  micEnabled = !micEnabled;
-  localStream.getAudioTracks()[0].enabled = micEnabled;
-}
-
-function toggleCamera() {
-  camEnabled = !camEnabled;
-  localStream.getVideoTracks()[0].enabled = camEnabled;
-}
-
-async function shareScreen() {
-  const screenStream = await navigator.mediaDevices.getDisplayMedia({ video:true });
-  const screenTrack = screenStream.getVideoTracks()[0];
-  const sender = peer.getSenders().find(s => s.track.kind === "video");
-  sender.replaceTrack(screenTrack);
-}
-
-socket.on("incoming-call", async (data) => {
-  document.getElementById("callPanel").style.display = "flex";
-
-  peer = createPeer(data.from);
-
-  localStream.getTracks().forEach(track => {
+  localStream.getTracks().forEach(track=>{
     peer.addTrack(track, localStream);
   });
+
+  peer.ontrack = e=>{
+    document.getElementById("remoteAudio").srcObject=e.streams[0];
+    document.getElementById("status").innerText="Вызов активен";
+  };
+
+  peer.onicecandidate = e=>{
+    if(e.candidate){
+      socket.emit("ice-candidate",{
+        to:currentUser,
+        candidate:e.candidate
+      });
+    }
+  };
+}
+
+// ===== ПРИНИМАЕМ ЗВОНОК =====
+socket.on("incoming-call", async data=>{
+  myName = prompt("Введите имя");
+  currentUser = data.from;
+
+  socket.emit("join", myName);
+
+  localStream = await navigator.mediaDevices.getUserMedia({
+    audio:true,
+    video:true
+  });
+
+  document.getElementById("mainMenu").style.display="none";
+  document.getElementById("callScreen").style.display="flex";
+  document.getElementById("callName").innerText=currentUser;
+
+  createPeer();
 
   await peer.setRemoteDescription(new RTCSessionDescription(data.offer));
   const answer = await peer.createAnswer();
   await peer.setLocalDescription(answer);
 
-  socket.emit("answer-call", {
-    from: myName,
-    to: data.from,
+  socket.emit("answer-call",{
+    to:data.from,
     answer
   });
 });
 
-socket.on("call-answered", async (data) => {
-  if (peer)
-    await peer.setRemoteDescription(new RTCSessionDescription(data.answer));
+socket.on("call-answered", async data=>{
+  await peer.setRemoteDescription(new RTCSessionDescription(data.answer));
 });
 
-socket.on("ice-candidate", async (candidate) => {
-  if (peer)
+socket.on("ice-candidate", async candidate=>{
+  if(peer && peer.remoteDescription){
     await peer.addIceCandidate(new RTCIceCandidate(candidate));
+  }
 });
 
-function createPeer(targetName) {
-  const pc = new RTCPeerConnection();
+// ===== КНОПКИ =====
+function toggleMic(){
+  if(!localStream) return;
+  micEnabled=!micEnabled;
+  localStream.getAudioTracks()[0].enabled=micEnabled;
+}
 
-  pc.onicecandidate = event => {
-    if (event.candidate) {
-      socket.emit("ice-candidate", {
-        from: myName,
-        to: targetName,
-        candidate: event.candidate
-      });
-    }
-  };
+function toggleCamera(){
+  if(!localStream) return;
+  camEnabled=!camEnabled;
+  localStream.getVideoTracks()[0].enabled=camEnabled;
+}
 
-  pc.ontrack = event => {
-    document.getElementById("remoteVideo").srcObject = event.streams[0];
-  };
+async function toggleScreen(){
+  const screen=await navigator.mediaDevices.getDisplayMedia({video:true});
+  const sender=peer.getSenders().find(s=>s.track.kind==="video");
+  sender.replaceTrack(screen.getVideoTracks()[0]);
+}
 
-  return pc;
+function endCall(){
+  if(peer) peer.close();
+  if(localStream) localStream.getTracks().forEach(t=>t.stop());
+  location.reload();
 }
 </script>
 
