@@ -38,10 +38,10 @@ io.on("connection", socket => {
 
   socket.on("login", (data, cb) => {
     if (!users[data.username])
-      return cb({ success: false, message: "Нет пользователя" });
+      return cb({ success: false });
 
     if (users[data.username].password !== data.password)
-      return cb({ success: false, message: "Неверный пароль" });
+      return cb({ success: false });
 
     socket.username = data.username;
     online[data.username] = socket.id;
@@ -51,13 +51,14 @@ io.on("connection", socket => {
       avatar: users[data.username].avatar
     });
 
-    io.emit("online", Object.keys(online));
+    io.emit("online", getOnlineUsers());
   });
 
   socket.on("setAvatar", img => {
     if (!socket.username) return;
     users[socket.username].avatar = img;
     saveUsers();
+    io.emit("online", getOnlineUsers());
   });
 
   socket.on("send_message", data => {
@@ -70,13 +71,37 @@ io.on("connection", socket => {
     }
   });
 
+  // ---- ЗВОНКИ ----
+
+  socket.on("callUser", ({ to, offer }) => {
+    const id = online[to];
+    if (id) io.to(id).emit("incomingCall", { from: socket.username, offer });
+  });
+
+  socket.on("answerCall", ({ to, answer }) => {
+    const id = online[to];
+    if (id) io.to(id).emit("callAnswered", { answer });
+  });
+
+  socket.on("iceCandidate", ({ to, candidate }) => {
+    const id = online[to];
+    if (id) io.to(id).emit("iceCandidate", { candidate });
+  });
+
   socket.on("disconnect", () => {
     if (socket.username) {
       delete online[socket.username];
-      io.emit("online", Object.keys(online));
+      io.emit("online", getOnlineUsers());
     }
   });
 
 });
+
+function getOnlineUsers() {
+  return Object.keys(online).map(u => ({
+    username: u,
+    avatar: users[u]?.avatar || null
+  }));
+}
 
 server.listen(process.env.PORT || 3000);
