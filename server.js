@@ -8,7 +8,7 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 app.use(express.static("public"));
-app.use(express.json({limit:"50mb"}));
+app.use(express.json({ limit: "50mb" }));
 
 let users = {};
 let online = {};
@@ -17,56 +17,63 @@ if (fs.existsSync("users.json")) {
   users = JSON.parse(fs.readFileSync("users.json"));
 }
 
-function saveUsers(){
-  fs.writeFileSync("users.json", JSON.stringify(users,null,2));
+function saveUsers() {
+  fs.writeFileSync("users.json", JSON.stringify(users, null, 2));
 }
 
 io.on("connection", socket => {
 
-  socket.on("register",(data,cb)=>{
-    if(users[data.username]) return cb({success:false,message:"Ник занят"});
-    users[data.username]={password:data.password,avatar:null};
+  socket.on("register", (data, cb) => {
+    if (users[data.username])
+      return cb({ success: false, message: "Ник занят" });
+
+    users[data.username] = {
+      password: data.password,
+      avatar: null
+    };
+
     saveUsers();
-    cb({success:true});
+    cb({ success: true });
   });
 
-  socket.on("login",(data,cb)=>{
-    if(!users[data.username]) return cb({success:false,message:"Нет пользователя"});
-    if(users[data.username].password!==data.password)
-      return cb({success:false,message:"Пароль неверный"});
-    online[data.username]=socket.id;
-    socket.username=data.username;
-    cb({success:true,avatar:users[data.username].avatar});
-    io.emit("online",Object.keys(online));
+  socket.on("login", (data, cb) => {
+    if (!users[data.username])
+      return cb({ success: false, message: "Нет пользователя" });
+
+    if (users[data.username].password !== data.password)
+      return cb({ success: false, message: "Неверный пароль" });
+
+    online[data.username] = socket.id;
+    socket.username = data.username;
+
+    cb({
+      success: true,
+      avatar: users[data.username].avatar
+    });
+
+    io.emit("online", Object.keys(online));
   });
 
-  socket.on("setAvatar",(img)=>{
-    if(!socket.username) return;
-    users[socket.username].avatar=img;
+  socket.on("setAvatar", img => {
+    if (!socket.username) return;
+    users[socket.username].avatar = img;
     saveUsers();
   });
 
-  socket.on("send_global",(msg)=>io.emit("new_global",msg));
-
-  socket.on("send_private",(data)=>{
-    const id=online[data.to];
-    if(id) io.to(id).emit("new_private",data);
+  socket.on("send_message", data => {
+    if (data.to === "global") {
+      io.emit("new_message", data);
+    } else {
+      const id = online[data.to];
+      if (id) io.to(id).emit("new_message", data);
+      io.to(socket.id).emit("new_message", data);
+    }
   });
 
-  socket.on("call-user",(data)=>{
-    const id=online[data.to];
-    if(id) io.to(id).emit("incoming-call",data);
-  });
-
-  socket.on("webrtc-signal",(data)=>{
-    const id=online[data.to];
-    if(id) io.to(id).emit("webrtc-signal",data);
-  });
-
-  socket.on("disconnect",()=>{
-    if(socket.username){
+  socket.on("disconnect", () => {
+    if (socket.username) {
       delete online[socket.username];
-      io.emit("online",Object.keys(online));
+      io.emit("online", Object.keys(online));
     }
   });
 

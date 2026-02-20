@@ -5,26 +5,135 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Asylumgram</title>
 <script src="/socket.io/socket.io.js"></script>
+
 <style>
-body{margin:0;font-family:Arial;background:#121212;color:white;height:100vh;display:flex;}
-#auth{position:absolute;width:100%;height:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;background:#121212;}
-#auth input{padding:10px;margin:5px;border:none;border-radius:8px;width:220px;}
-#auth button{padding:10px;margin:5px;border:none;border-radius:8px;background:#2196f3;color:white;}
+body{
+margin:0;
+font-family:Arial;
+background:#121212;
+color:white;
+height:100vh;
+display:flex;
+}
+
+#auth{
+position:absolute;
+width:100%;
+height:100%;
+display:flex;
+flex-direction:column;
+justify-content:center;
+align-items:center;
+background:#121212;
+}
+
+#auth input{
+padding:10px;
+margin:5px;
+border:none;
+border-radius:8px;
+width:220px;
+}
+
+#auth button{
+padding:10px;
+margin:5px;
+border:none;
+border-radius:8px;
+background:#2196f3;
+color:white;
+}
+
 #app{display:none;width:100%;}
-#sidebar{width:240px;background:#1e1e1e;padding:10px;overflow-y:auto;}
-.user{padding:6px;cursor:pointer;display:flex;align-items:center;}
-.dot{width:8px;height:8px;border-radius:50%;background:lime;margin-right:6px;}
-#chat{flex:1;display:flex;flex-direction:column;background-size:cover;}
-#messages{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;}
-.msg{max-width:70%;padding:8px;margin:5px 0;border-radius:12px;display:flex;gap:6px;}
+
+#sidebar{
+width:230px;
+background:#1e1e1e;
+padding:10px;
+overflow-y:auto;
+}
+
+.user{
+padding:6px;
+cursor:pointer;
+display:flex;
+align-items:center;
+gap:6px;
+}
+
+.dot{
+width:8px;height:8px;border-radius:50%;background:lime;
+}
+
+#chat{
+flex:1;
+display:flex;
+flex-direction:column;
+background-size:cover;
+background-position:center;
+}
+
+#messages{
+flex:1;
+overflow-y:auto;
+padding:10px;
+display:flex;
+flex-direction:column;
+}
+
+.msg{
+display:flex;
+gap:8px;
+max-width:75%;
+margin:6px 0;
+padding:8px;
+border-radius:12px;
+}
+
 .me{background:#2196f3;align-self:flex-end;}
 .other{background:#333;align-self:flex-start;}
-.avatar{width:30px;height:30px;border-radius:50%;object-fit:cover;}
-#bottom{display:flex;padding:10px;background:#1a1a1a;}
-#input{flex:1;padding:10px;border:none;border-radius:20px;background:#2a2a2a;color:white;}
-button{margin-left:5px;border:none;padding:8px 12px;border-radius:20px;background:#2196f3;color:white;cursor:pointer;}
-video{width:150px;border-radius:10px;margin:5px;}
-#callBox{position:fixed;bottom:10px;right:10px;background:#222;padding:10px;border-radius:10px;display:none;}
+
+.avatar{
+width:32px;
+height:32px;
+border-radius:50%;
+object-fit:cover;
+}
+
+#bottom{
+display:flex;
+padding:10px;
+background:#1a1a1a;
+gap:5px;
+}
+
+#input{
+flex:1;
+padding:10px;
+border:none;
+border-radius:20px;
+background:#2a2a2a;
+color:white;
+}
+
+button{
+border:none;
+padding:8px 12px;
+border-radius:20px;
+background:#2196f3;
+color:white;
+cursor:pointer;
+}
+
+img.chatImg{
+max-width:200px;
+border-radius:10px;
+margin-top:5px;
+}
+
+audio{
+margin-top:5px;
+}
 </style>
 </head>
 <body>
@@ -39,6 +148,7 @@ video{width:150px;border-radius:10px;margin:5px;}
 </div>
 
 <div id="app">
+
 <div id="sidebar">
 <h3>Онлайн</h3>
 <div id="users"></div>
@@ -56,30 +166,22 @@ video{width:150px;border-radius:10px;margin:5px;}
 <input type="file" id="imgInput" hidden>
 <button onclick="send()">➤</button>
 <button onclick="imgInput.click()">📷</button>
-<button onclick="startCall()">📞</button>
-</div>
+<button onclick="recordVoice()">🎤</button>
 </div>
 </div>
 
-<div id="callBox">
-<video id="localVideo" autoplay muted></video>
-<video id="remoteVideo" autoplay></video><br>
-<button onclick="endCall()">❌</button>
 </div>
 
 <script>
 const socket=io();
 let username=null;
-let currentChat="global";
 let avatar=null;
-let peer;
-let localStream;
-
-const iceConfig={iceServers:[{urls:"stun:stun.l.google.com:19302"}]};
+let currentChat="global";
+let mediaRecorder;
 
 function register(){
 socket.emit("register",{username:u.value,password:p.value},res=>{
-if(res.success) alert("Успешно");
+if(res.success) alert("Регистрация успешна");
 else err.innerText=res.message;
 });
 }
@@ -102,7 +204,7 @@ if(user!==username){
 let div=document.createElement("div");
 div.className="user";
 div.innerHTML='<div class="dot"></div>'+user;
-div.onclick=()=>currentChat=user;
+div.onclick=()=>{currentChat=user;messages.innerHTML="";};
 users.appendChild(div);
 }
 });
@@ -110,29 +212,49 @@ users.appendChild(div);
 
 function send(){
 if(!input.value) return;
-let msg={from:username,text:input.value,avatar};
-if(currentChat==="global")
-socket.emit("send_global",msg);
-else
-socket.emit("send_private",{...msg,to:currentChat});
+
+socket.emit("send_message",{
+from:username,
+to:currentChat,
+text:input.value,
+avatar
+});
+
 input.value="";
 }
 
-socket.on("new_global",addMsg);
-socket.on("new_private",addMsg);
+socket.on("new_message",addMessage);
 
-function addMsg(msg){
+function addMessage(msg){
 let div=document.createElement("div");
 div.className="msg "+(msg.from===username?"me":"other");
+
 if(msg.avatar){
 let img=document.createElement("img");
 img.src=msg.avatar;
 img.className="avatar";
 div.appendChild(img);
 }
-let span=document.createElement("span");
-span.innerText=msg.from+": "+(msg.text||"");
-div.appendChild(span);
+
+let content=document.createElement("div");
+
+if(msg.image){
+let img=document.createElement("img");
+img.src=msg.image;
+img.className="chatImg";
+content.appendChild(img);
+}
+else if(msg.voice){
+let audio=document.createElement("audio");
+audio.controls=true;
+audio.src=msg.voice;
+content.appendChild(audio);
+}
+else{
+content.innerText=msg.from+": "+msg.text;
+}
+
+div.appendChild(content);
 messages.appendChild(div);
 messages.scrollTop=messages.scrollHeight;
 }
@@ -140,11 +262,38 @@ messages.scrollTop=messages.scrollHeight;
 imgInput.onchange=e=>{
 let reader=new FileReader();
 reader.onload=()=>{
-let msg={from:username,image:reader.result,avatar};
-socket.emit("send_global",msg);
+socket.emit("send_message",{
+from:username,
+to:currentChat,
+image:reader.result,
+avatar
+});
 };
 reader.readAsDataURL(e.target.files[0]);
 };
+
+function recordVoice(){
+navigator.mediaDevices.getUserMedia({audio:true}).then(stream=>{
+mediaRecorder=new MediaRecorder(stream);
+let chunks=[];
+mediaRecorder.ondataavailable=e=>chunks.push(e.data);
+mediaRecorder.onstop=()=>{
+let blob=new Blob(chunks);
+let reader=new FileReader();
+reader.onload=()=>{
+socket.emit("send_message",{
+from:username,
+to:currentChat,
+voice:reader.result,
+avatar
+});
+};
+reader.readAsDataURL(blob);
+};
+mediaRecorder.start();
+setTimeout(()=>mediaRecorder.stop(),3000);
+});
+}
 
 function setAvatar(){
 let file=avatarInput.files[0];
@@ -161,59 +310,6 @@ let file=bgInput.files[0];
 let reader=new FileReader();
 reader.onload=()=>chat.style.backgroundImage="url("+reader.result+")";
 reader.readAsDataURL(file);
-}
-
-async function startCall(){
-if(currentChat==="global") return alert("Выбери пользователя");
-localStream=await navigator.mediaDevices.getUserMedia({video:true,audio:true});
-callBox.style.display="block";
-localVideo.srcObject=localStream;
-peer=new RTCPeerConnection(iceConfig);
-localStream.getTracks().forEach(t=>peer.addTrack(t,localStream));
-peer.ontrack=e=>remoteVideo.srcObject=e.streams[0];
-peer.onicecandidate=e=>{
-if(e.candidate){
-socket.emit("webrtc-signal",{to:currentChat,signal:e.candidate,from:username});
-}
-};
-let offer=await peer.createOffer();
-await peer.setLocalDescription(offer);
-socket.emit("call-user",{to:currentChat,offer,from:username});
-}
-
-socket.on("incoming-call",async data=>{
-if(confirm("Принять звонок от "+data.from+"?")){
-currentChat=data.from;
-localStream=await navigator.mediaDevices.getUserMedia({video:true,audio:true});
-callBox.style.display="block";
-localVideo.srcObject=localStream;
-peer=new RTCPeerConnection(iceConfig);
-localStream.getTracks().forEach(t=>peer.addTrack(t,localStream));
-peer.ontrack=e=>remoteVideo.srcObject=e.streams[0];
-peer.onicecandidate=e=>{
-if(e.candidate){
-socket.emit("webrtc-signal",{to:data.from,signal:e.candidate,from:username});
-}
-};
-await peer.setRemoteDescription(new RTCSessionDescription(data.offer));
-let answer=await peer.createAnswer();
-await peer.setLocalDescription(answer);
-socket.emit("webrtc-signal",{to:data.from,signal:answer,from:username});
-}
-});
-
-socket.on("webrtc-signal",async data=>{
-if(data.signal.type==="answer"){
-await peer.setRemoteDescription(new RTCSessionDescription(data.signal));
-}else{
-try{await peer.addIceCandidate(new RTCIceCandidate(data.signal));}catch{}
-}
-});
-
-function endCall(){
-if(peer) peer.close();
-if(localStream) localStream.getTracks().forEach(t=>t.stop());
-callBox.style.display="none";
 }
 </script>
 
