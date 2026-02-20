@@ -23,17 +23,17 @@ function saveUsers(){
 
 io.on("connection", socket => {
 
-  socket.on("register", (data, cb)=>{
+  socket.on("register",(data,cb)=>{
     if(users[data.username]) return cb({success:false,message:"Ник занят"});
     users[data.username]={password:data.password,avatar:null};
     saveUsers();
     cb({success:true});
   });
 
-  socket.on("login", (data, cb)=>{
-    if(!users[data.username]) return cb({success:false,message:"Нет такого пользователя"});
+  socket.on("login",(data,cb)=>{
+    if(!users[data.username]) return cb({success:false,message:"Нет пользователя"});
     if(users[data.username].password!==data.password)
-      return cb({success:false,message:"Неверный пароль"});
+      return cb({success:false,message:"Пароль неверный"});
     online[data.username]=socket.id;
     socket.username=data.username;
     cb({success:true,avatar:users[data.username].avatar});
@@ -46,25 +46,21 @@ io.on("connection", socket => {
     saveUsers();
   });
 
-  socket.on("send_global",(msg)=>{
-    io.emit("new_global",msg);
-  });
+  socket.on("send_global",(msg)=>io.emit("new_global",msg));
 
   socket.on("send_private",(data)=>{
-    const target=online[data.to];
-    if(target){
-      io.to(target).emit("new_private",data);
-    }
+    const id=online[data.to];
+    if(id) io.to(id).emit("new_private",data);
   });
 
-  socket.on("call",(data)=>{
-    const target=online[data.to];
-    if(target) io.to(target).emit("call",data);
+  socket.on("call-user",(data)=>{
+    const id=online[data.to];
+    if(id) io.to(id).emit("incoming-call",data);
   });
 
-  socket.on("signal",(data)=>{
-    const target=online[data.to];
-    if(target) io.to(target).emit("signal",data);
+  socket.on("webrtc-signal",(data)=>{
+    const id=online[data.to];
+    if(id) io.to(id).emit("webrtc-signal",data);
   });
 
   socket.on("disconnect",()=>{
