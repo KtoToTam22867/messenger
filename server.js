@@ -2,11 +2,13 @@ const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
 const fs = require("fs");
+const cors = require("cors");
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
+app.use(cors());
 app.use(express.static("public"));
 app.use(express.json({ limit: "50mb" }));
 
@@ -14,18 +16,32 @@ let users = {};
 let online = {};
 
 if (fs.existsSync("users.json")) {
-  users = JSON.parse(fs.readFileSync("users.json"));
+  try {
+    users = JSON.parse(fs.readFileSync("users.json"));
+  } catch {
+    users = {};
+  }
 }
 
 function saveUsers() {
   fs.writeFileSync("users.json", JSON.stringify(users, null, 2));
 }
 
+function getOnlineUsers() {
+  return Object.keys(online).map(u => ({
+    username: u,
+    avatar: users[u]?.avatar || null
+  }));
+}
+
 io.on("connection", socket => {
 
   socket.on("register", (data, cb) => {
+    if (!data.username || !data.password)
+      return cb({ success: false });
+
     if (users[data.username])
-      return cb({ success: false, message: "Ник занят" });
+      return cb({ success: false });
 
     users[data.username] = {
       password: data.password,
@@ -62,6 +78,8 @@ io.on("connection", socket => {
   });
 
   socket.on("send_message", data => {
+    if (!socket.username) return;
+
     if (data.to === "global") {
       io.emit("new_message", data);
     } else {
@@ -71,7 +89,7 @@ io.on("connection", socket => {
     }
   });
 
-  // ---- ЗВОНКИ ----
+  // --- ЗВОНКИ ---
 
   socket.on("callUser", ({ to, offer }) => {
     const id = online[to];
@@ -97,11 +115,8 @@ io.on("connection", socket => {
 
 });
 
-function getOnlineUsers() {
-  return Object.keys(online).map(u => ({
-    username: u,
-    avatar: users[u]?.avatar || null
-  }));
-}
+const PORT = process.env.PORT || 3000;
 
-server.listen(process.env.PORT || 3000);
+server.listen(PORT, () => {
+  console.log("Server started on port " + PORT);
+});
