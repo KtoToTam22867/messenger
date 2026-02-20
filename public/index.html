@@ -7,133 +7,25 @@
 <script src="/socket.io/socket.io.js"></script>
 
 <style>
-body{
-margin:0;
-font-family:Arial;
-background:#121212;
-color:white;
-height:100vh;
-display:flex;
-}
-
-#auth{
-position:absolute;
-width:100%;
-height:100%;
-display:flex;
-flex-direction:column;
-justify-content:center;
-align-items:center;
-background:#121212;
-}
-
-#auth input{
-padding:10px;
-margin:5px;
-border:none;
-border-radius:8px;
-width:220px;
-}
-
-#auth button{
-padding:10px;
-margin:5px;
-border:none;
-border-radius:8px;
-background:#2196f3;
-color:white;
-}
-
+body{margin:0;font-family:Arial;background:#121212;color:white;height:100vh;display:flex;}
+#auth{position:absolute;width:100%;height:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;background:#121212;}
+#auth input{padding:10px;margin:5px;border:none;border-radius:8px;width:220px;}
+#auth button{padding:10px;margin:5px;border:none;border-radius:8px;background:#2196f3;color:white;}
 #app{display:none;width:100%;}
-
-#sidebar{
-width:230px;
-background:#1e1e1e;
-padding:10px;
-overflow-y:auto;
-}
-
-.user{
-padding:6px;
-cursor:pointer;
-display:flex;
-align-items:center;
-gap:6px;
-}
-
-.dot{
-width:8px;height:8px;border-radius:50%;background:lime;
-}
-
-#chat{
-flex:1;
-display:flex;
-flex-direction:column;
-background-size:cover;
-background-position:center;
-}
-
-#messages{
-flex:1;
-overflow-y:auto;
-padding:10px;
-display:flex;
-flex-direction:column;
-}
-
-.msg{
-display:flex;
-gap:8px;
-max-width:75%;
-margin:6px 0;
-padding:8px;
-border-radius:12px;
-}
-
+#sidebar{width:220px;background:#1e1e1e;padding:10px;overflow-y:auto;}
+.user{padding:6px;cursor:pointer;display:flex;align-items:center;gap:6px;}
+.dot{width:8px;height:8px;border-radius:50%;background:lime;}
+#chat{flex:1;display:flex;flex-direction:column;}
+#messages{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;}
+.msg{display:flex;gap:8px;max-width:75%;margin:6px 0;padding:8px;border-radius:12px;}
 .me{background:#2196f3;align-self:flex-end;}
 .other{background:#333;align-self:flex-start;}
-
-.avatar{
-width:32px;
-height:32px;
-border-radius:50%;
-object-fit:cover;
-}
-
-#bottom{
-display:flex;
-padding:10px;
-background:#1a1a1a;
-gap:5px;
-}
-
-#input{
-flex:1;
-padding:10px;
-border:none;
-border-radius:20px;
-background:#2a2a2a;
-color:white;
-}
-
-button{
-border:none;
-padding:8px 12px;
-border-radius:20px;
-background:#2196f3;
-color:white;
-cursor:pointer;
-}
-
-img.chatImg{
-max-width:200px;
-border-radius:10px;
-margin-top:5px;
-}
-
-audio{
-margin-top:5px;
-}
+.avatar{width:32px;height:32px;border-radius:50%;object-fit:cover;}
+#bottom{display:flex;padding:10px;background:#1a1a1a;gap:5px;}
+#input{flex:1;padding:10px;border:none;border-radius:20px;background:#2a2a2a;color:white;}
+button{border:none;padding:8px 12px;border-radius:20px;background:#2196f3;color:white;cursor:pointer;}
+img.chatImg{max-width:200px;border-radius:10px;margin-top:5px;}
+audio{margin-top:5px;}
 </style>
 </head>
 <body>
@@ -148,15 +40,12 @@ margin-top:5px;
 </div>
 
 <div id="app">
-
 <div id="sidebar">
 <h3>Онлайн</h3>
 <div id="users"></div>
 <hr>
 <input type="file" id="avatarInput">
 <button onclick="setAvatar()">Аватар</button>
-<input type="file" id="bgInput">
-<button onclick="setBg()">Обои</button>
 </div>
 
 <div id="chat">
@@ -169,7 +58,6 @@ margin-top:5px;
 <button onclick="recordVoice()">🎤</button>
 </div>
 </div>
-
 </div>
 
 <script>
@@ -178,6 +66,9 @@ let username=null;
 let avatar=null;
 let currentChat="global";
 let mediaRecorder;
+let recording=false;
+let chunks=[];
+let stream;
 
 function register(){
 socket.emit("register",{username:u.value,password:p.value},res=>{
@@ -204,7 +95,7 @@ if(user!==username){
 let div=document.createElement("div");
 div.className="user";
 div.innerHTML='<div class="dot"></div>'+user;
-div.onclick=()=>{currentChat=user;messages.innerHTML="";};
+div.onclick=()=>currentChat=user;
 users.appendChild(div);
 }
 });
@@ -212,14 +103,12 @@ users.appendChild(div);
 
 function send(){
 if(!input.value) return;
-
 socket.emit("send_message",{
 from:username,
 to:currentChat,
 text:input.value,
-avatar
+avatar:avatar
 });
-
 input.value="";
 }
 
@@ -239,10 +128,10 @@ div.appendChild(img);
 let content=document.createElement("div");
 
 if(msg.image){
-let img=document.createElement("img");
-img.src=msg.image;
-img.className="chatImg";
-content.appendChild(img);
+let pic=document.createElement("img");
+pic.src=msg.image;
+pic.className="chatImg";
+content.appendChild(pic);
 }
 else if(msg.voice){
 let audio=document.createElement("audio");
@@ -251,7 +140,7 @@ audio.src=msg.voice;
 content.appendChild(audio);
 }
 else{
-content.innerText=msg.from+": "+msg.text;
+content.innerText=msg.from+": "+(msg.text||"");
 }
 
 div.appendChild(content);
@@ -266,33 +155,38 @@ socket.emit("send_message",{
 from:username,
 to:currentChat,
 image:reader.result,
-avatar
+avatar:avatar
 });
 };
 reader.readAsDataURL(e.target.files[0]);
 };
 
-function recordVoice(){
-navigator.mediaDevices.getUserMedia({audio:true}).then(stream=>{
+async function recordVoice(){
+if(!recording){
+stream=await navigator.mediaDevices.getUserMedia({audio:true});
 mediaRecorder=new MediaRecorder(stream);
-let chunks=[];
-mediaRecorder.ondataavailable=e=>chunks.push(e.data);
+chunks=[];
+mediaRecorder.ondataavailable=e=>{if(e.data.size>0)chunks.push(e.data);};
 mediaRecorder.onstop=()=>{
-let blob=new Blob(chunks);
-let reader=new FileReader();
+const blob=new Blob(chunks,{type:'audio/webm'});
+const reader=new FileReader();
 reader.onload=()=>{
 socket.emit("send_message",{
 from:username,
 to:currentChat,
 voice:reader.result,
-avatar
+avatar:avatar
 });
 };
 reader.readAsDataURL(blob);
+stream.getTracks().forEach(t=>t.stop());
+recording=false;
 };
 mediaRecorder.start();
-setTimeout(()=>mediaRecorder.stop(),3000);
-});
+recording=true;
+}else{
+mediaRecorder.stop();
+}
 }
 
 function setAvatar(){
@@ -302,13 +196,6 @@ reader.onload=()=>{
 avatar=reader.result;
 socket.emit("setAvatar",reader.result);
 };
-reader.readAsDataURL(file);
-}
-
-function setBg(){
-let file=bgInput.files[0];
-let reader=new FileReader();
-reader.onload=()=>chat.style.backgroundImage="url("+reader.result+")";
 reader.readAsDataURL(file);
 }
 </script>

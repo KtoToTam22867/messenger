@@ -43,13 +43,12 @@ io.on("connection", socket => {
     if (users[data.username].password !== data.password)
       return cb({ success: false, message: "Неверный пароль" });
 
-    online[data.username] = socket.id;
     socket.username = data.username;
+    online[data.username] = socket.id;
 
     cb({
       success: true,
-      avatar: users[data.username].avatar,
-      allUsers: users
+      avatar: users[data.username].avatar
     });
 
     io.emit("online", Object.keys(online));
@@ -59,7 +58,6 @@ io.on("connection", socket => {
     if (!socket.username) return;
     users[socket.username].avatar = img;
     saveUsers();
-    io.emit("update_avatars", users);
   });
 
   socket.on("send_message", data => {
