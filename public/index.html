@@ -1,70 +1,130 @@
-<!-- слишком большой чтобы объяснять, просто вставь -->
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Asylumgram</title>
 <script src="/socket.io/socket.io.js"></script>
+<style>
+body{font-family:sans-serif;margin:0;background:#111;color:white}
+#chat{display:none}
+#messages{height:300px;overflow:auto;border:1px solid #444;padding:10px}
+input,button{padding:8px;margin:5px}
+button{background:#2196f3;color:white;border:none}
+img{max-width:150px;border-radius:10px;margin-top:5px}
+.online{color:#0f0}
+</style>
+</head>
+<body>
+
+<div id="auth">
+<h2>Asylumgram</h2>
+<input id="username" placeholder="Username"><br>
+<input id="password" type="password" placeholder="Password"><br>
+<button onclick="register()">Register</button>
+<button onclick="login()">Login</button>
+</div>
+
+<div id="chat">
+<h3 id="me"></h3>
+<input type="file" id="avatarInput"><br>
+<div>Online: <span id="onlineUsers"></span></div>
+<hr>
+<select id="toUser">
+<option value="global">Global Chat</option>
+</select>
+<div id="messages"></div>
+<input id="messageInput" placeholder="Message">
+<input type="file" id="imageInput">
+<button onclick="send()">Send</button>
+</div>
+
 <script>
 const socket = io();
-let username = null;
-let avatar = null;
-let currentChat = "global";
+let myUsername = null;
 
-let peerConnection;
-let localStream;
-
-const servers = {
-  iceServers: [
-    { urls: "stun:stun.l.google.com:19302" }
-  ]
-};
-
-async function startCall(user){
-  localStream = await navigator.mediaDevices.getUserMedia({ audio:true });
-  peerConnection = new RTCPeerConnection(servers);
-
-  localStream.getTracks().forEach(track=>{
-    peerConnection.addTrack(track, localStream);
+function register(){
+  socket.emit("register",{
+    username:username.value,
+    password:password.value
+  },res=>{
+    alert(res.success?"Registered":"Error");
   });
-
-  peerConnection.onicecandidate = e=>{
-    if(e.candidate){
-      socket.emit("iceCandidate",{ to:user, candidate:e.candidate });
-    }
-  };
-
-  const offer = await peerConnection.createOffer();
-  await peerConnection.setLocalDescription(offer);
-
-  socket.emit("callUser",{ to:user, offer });
 }
 
-socket.on("incomingCall", async ({ from, offer })=>{
-  if(!confirm("Входящий звонок от "+from)) return;
+function login(){
+  socket.emit("login",{
+    username:username.value,
+    password:password.value
+  },res=>{
+    if(!res.success) return alert("Error");
 
-  localStream = await navigator.mediaDevices.getUserMedia({ audio:true });
-  peerConnection = new RTCPeerConnection(servers);
+    myUsername=username.value;
+    auth.style.display="none";
+    chat.style.display="block";
+    me.innerText="You: "+myUsername;
 
-  localStream.getTracks().forEach(track=>{
-    peerConnection.addTrack(track, localStream);
-  });
-
-  peerConnection.onicecandidate = e=>{
-    if(e.candidate){
-      socket.emit("iceCandidate",{ to:from, candidate:e.candidate });
+    if(res.avatar){
+      let img=document.createElement("img");
+      img.src=res.avatar;
+      chat.prepend(img);
     }
-  };
+  });
+}
 
-  await peerConnection.setRemoteDescription(offer);
-  const answer = await peerConnection.createAnswer();
-  await peerConnection.setLocalDescription(answer);
+avatarInput.onchange=()=>{
+  const file=avatarInput.files[0];
+  const reader=new FileReader();
+  reader.onload=()=>socket.emit("setAvatar",reader.result);
+  reader.readAsDataURL(file);
+};
 
-  socket.emit("answerCall",{ to:from, answer });
-});
+function send(){
+  const file=imageInput.files[0];
 
-socket.on("callAnswered", async ({ answer })=>{
-  await peerConnection.setRemoteDescription(answer);
-});
-
-socket.on("iceCandidate", async ({ candidate })=>{
-  if(peerConnection){
-    await peerConnection.addIceCandidate(candidate);
+  if(file){
+    const reader=new FileReader();
+    reader.onload=()=>{
+      socket.emit("send_message",{
+        to:toUser.value,
+        text:messageInput.value,
+        image:reader.result
+      });
+    };
+    reader.readAsDataURL(file);
+  }else{
+    socket.emit("send_message",{
+      to:toUser.value,
+      text:messageInput.value
+    });
   }
+
+  messageInput.value="";
+  imageInput.value="";
+}
+
+socket.on("new_message",data=>{
+  let div=document.createElement("div");
+  div.innerHTML="<b>"+data.from+":</b> "+(data.text||"");
+  if(data.image){
+    let img=document.createElement("img");
+    img.src=data.image;
+    div.appendChild(img);
+  }
+  messages.appendChild(div);
+});
+
+socket.on("online",list=>{
+  onlineUsers.innerHTML="";
+  toUser.innerHTML='<option value="global">Global Chat</option>';
+
+  list.forEach(u=>{
+    onlineUsers.innerHTML+=`<span class="online">${u}</span> `;
+    if(u!==myUsername){
+      toUser.innerHTML+=`<option value="${u}">${u}</option>`;
+    }
+  });
 });
 </script>
+
+</body>
+</html>
