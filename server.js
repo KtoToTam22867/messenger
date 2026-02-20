@@ -48,7 +48,8 @@ io.on("connection", socket => {
 
     cb({
       success: true,
-      avatar: users[data.username].avatar
+      avatar: users[data.username].avatar,
+      allUsers: users
     });
 
     io.emit("online", Object.keys(online));
@@ -58,6 +59,7 @@ io.on("connection", socket => {
     if (!socket.username) return;
     users[socket.username].avatar = img;
     saveUsers();
+    io.emit("update_avatars", users);
   });
 
   socket.on("send_message", data => {
