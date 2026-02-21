@@ -1,130 +1,126 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
-<meta charset="UTF-8">
-<title>Asylumgram</title>
-<script src="/socket.io/socket.io.js"></script>
-<style>
-body{font-family:sans-serif;margin:0;background:#111;color:white}
-#chat{display:none}
-#messages{height:300px;overflow:auto;border:1px solid #444;padding:10px}
-input,button{padding:8px;margin:5px}
-button{background:#2196f3;color:white;border:none}
-img{max-width:150px;border-radius:10px;margin-top:5px}
-.online{color:#0f0}
-</style>
+    <meta charset="UTF-8">
+    <title>AsylumGram Fix</title>
+    <style>
+        body { font-family: sans-serif; background: #222; color: white; text-align: center; }
+        video { width: 320px; border: 2px solid #555; margin: 10px; border-radius: 8px; background: #000; }
+        #controls { margin-top: 20px; display: none; }
+        .admin-only { display: none; background: #444; padding: 15px; margin: 10px; }
+        button { padding: 10px 20px; cursor: pointer; margin: 5px; }
+    </style>
 </head>
 <body>
 
-<div id="auth">
-<h2>Asylumgram</h2>
-<input id="username" placeholder="Username"><br>
-<input id="password" type="password" placeholder="Password"><br>
-<button onclick="register()">Register</button>
-<button onclick="login()">Login</button>
-</div>
+    <div id="auth">
+        <input type="text" id="user" placeholder="Логин">
+        <input type="password" id="pass" placeholder="Пароль">
+        <button onclick="login()">Войти</button>
+    </div>
 
-<div id="chat">
-<h3 id="me"></h3>
-<input type="file" id="avatarInput"><br>
-<div>Online: <span id="onlineUsers"></span></div>
-<hr>
-<select id="toUser">
-<option value="global">Global Chat</option>
-</select>
-<div id="messages"></div>
-<input id="messageInput" placeholder="Message">
-<input type="file" id="imageInput">
-<button onclick="send()">Send</button>
-</div>
+    <div id="main" style="display:none">
+        <div id="admin-box" class="admin-only">
+            <input type="text" id="gname" placeholder="Имя группы">
+            <button onclick="makeGroup()">➕ Создать группу</button>
+        </div>
 
-<script>
-const socket = io();
-let myUsername = null;
+        <div id="groups"></div>
+        
+        <div id="video-ui">
+            <video id="local" autoplay muted playsinline></video>
+            <video id="remote" autoplay playsinline></video>
+            <br>
+            <button id="scrBtn" onclick="toggleScreen()">🖥️ Экран</button>
+            <button onclick="location.reload()">❌ Сброс</button>
+        </div>
+    </div>
 
-function register(){
-  socket.emit("register",{
-    username:username.value,
-    password:password.value
-  },res=>{
-    alert(res.success?"Registered":"Error");
-  });
-}
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        let localStream, peer, screenStream;
 
-function login(){
-  socket.emit("login",{
-    username:username.value,
-    password:password.value
-  },res=>{
-    if(!res.success) return alert("Error");
+        async function login() {
+            const username = document.getElementById('user').value;
+            socket.emit('login', { username, password: document.getElementById('pass').value }, (res) => {
+                if(res.success) {
+                    document.getElementById('auth').style.display = 'none';
+                    document.getElementById('main').style.display = 'block';
+                    if(res.isAdmin) document.getElementById('admin-box').style.display = 'block';
+                    initCamera();
+                }
+            });
+        }
 
-    myUsername=username.value;
-    auth.style.display="none";
-    chat.style.display="block";
-    me.innerText="You: "+myUsername;
+        async function initCamera() {
+            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            document.getElementById('local').srcObject = localStream;
+        }
 
-    if(res.avatar){
-      let img=document.createElement("img");
-      img.src=res.avatar;
-      chat.prepend(img);
-    }
-  });
-}
+        function makeGroup() {
+            const name = document.getElementById('gname').value;
+            if(name) socket.emit('create-group', name);
+        }
 
-avatarInput.onchange=()=>{
-  const file=avatarInput.files[0];
-  const reader=new FileReader();
-  reader.onload=()=>socket.emit("setAvatar",reader.result);
-  reader.readAsDataURL(file);
-};
+        socket.on('group-available', (name) => {
+            const b = document.createElement('button');
+            b.innerText = "Группа: " + name;
+            b.onclick = () => { socket.emit('join-group', name); };
+            document.getElementById('groups').appendChild(b);
+        });
 
-function send(){
-  const file=imageInput.files[0];
+        // ФИКС ЭКРАНА: заменяем трек в текущем соединении
+        async function toggleScreen() {
+            if (!screenStream) {
+                screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+                const track = screenStream.getVideoTracks()[0];
+                
+                if (peer) {
+                    const sender = peer.getSenders().find(s => s.track.kind === 'video');
+                    sender.replaceTrack(track); // Вот это чинит баг
+                }
+                document.getElementById('local').srcObject = screenStream;
+                track.onended = () => toggleScreen();
+            } else {
+                screenStream.getTracks().forEach(t => t.stop());
+                screenStream = null;
+                const videoTrack = localStream.getVideoTracks()[0];
+                if (peer) {
+                    const sender = peer.getSenders().find(s => s.track.kind === 'video');
+                    sender.replaceTrack(videoTrack);
+                }
+                document.getElementById('local').srcObject = localStream;
+            }
+        }
 
-  if(file){
-    const reader=new FileReader();
-    reader.onload=()=>{
-      socket.emit("send_message",{
-        to:toUser.value,
-        text:messageInput.value,
-        image:reader.result
-      });
-    };
-    reader.readAsDataURL(file);
-  }else{
-    socket.emit("send_message",{
-      to:toUser.value,
-      text:messageInput.value
-    });
-  }
+        socket.on('incoming-call', async (d) => {
+            await createPeer(d.fromSid);
+            await peer.setRemoteDescription(new RTCSessionDescription(d.offer));
+            const ans = await peer.createAnswer();
+            await peer.setLocalDescription(ans);
+            socket.emit('answer-call', { to: d.fromSid, answer: ans });
+        });
 
-  messageInput.value="";
-  imageInput.value="";
-}
+        socket.on('call-answered', d => peer.setRemoteDescription(new RTCSessionDescription(d.answer)));
+        socket.on('ice-candidate', d => peer.addIceCandidate(new RTCIceCandidate(d.candidate)));
 
-socket.on("new_message",data=>{
-  let div=document.createElement("div");
-  div.innerHTML="<b>"+data.from+":</b> "+(data.text||"");
-  if(data.image){
-    let img=document.createElement("img");
-    img.src=data.image;
-    div.appendChild(img);
-  }
-  messages.appendChild(div);
-});
+        async function createPeer(sid) {
+            peer = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+            localStream.getTracks().forEach(t => peer.addTrack(t, localStream));
+            peer.ontrack = e => document.getElementById('remote').srcObject = e.streams[0];
+            peer.onicecandidate = e => {
+                if(e.candidate) socket.emit('ice-candidate', { to: sid, candidate: e.candidate });
+            };
+        }
 
-socket.on("online",list=>{
-  onlineUsers.innerHTML="";
-  toUser.innerHTML='<option value="global">Global Chat</option>';
-
-  list.forEach(u=>{
-    onlineUsers.innerHTML+=`<span class="online">${u}</span> `;
-    if(u!==myUsername){
-      toUser.innerHTML+=`<option value="${u}">${u}</option>`;
-    }
-  });
-});
-</script>
-
+        // Авто-вызов при входе в группу
+        socket.on('user-joined', async (d) => {
+            await createPeer(d.sid);
+            const offer = await peer.createOffer();
+            await peer.setLocalDescription(offer);
+            socket.emit('call-user', { to: d.sid, offer });
+        });
+    </script>
 </body>
 </html>

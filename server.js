@@ -8,96 +8,59 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 app.use(express.static("public"));
-app.use(express.json({ limit: "50mb" }));
 
+const DB_FILE = "users.json";
 let users = {};
 let online = {};
 
-if (fs.existsSync("users.json")) {
-  users = JSON.parse(fs.readFileSync("users.json"));
+if (fs.existsSync(DB_FILE)) {
+    try { users = JSON.parse(fs.readFileSync(DB_FILE)); } catch (e) { users = {}; }
 }
 
-function saveUsers() {
-  fs.writeFileSync("users.json", JSON.stringify(users, null, 2));
-}
-
-io.on("connection", socket => {
-
-  socket.on("register", (data, cb) => {
-    if (!data.username || !data.password)
-      return cb({ success: false });
-
-    if (users[data.username])
-      return cb({ success: false });
-
-    users[data.username] = {
-      password: data.password,
-      avatar: null
-    };
-
-    saveUsers();
-    cb({ success: true });
-  });
-
-  socket.on("login", (data, cb) => {
-    if (!users[data.username])
-      return cb({ success: false });
-
-    if (users[data.username].password !== data.password)
-      return cb({ success: false });
-
-    socket.username = data.username;
-    online[data.username] = socket.id;
-
-    cb({
-      success: true,
-      avatar: users[data.username].avatar
+io.on("connection", (socket) => {
+    socket.on("login", (data, cb) => {
+        if (users[data.username] && users[data.username].password === data.password) {
+            socket.username = data.username;
+            online[data.username] = socket.id;
+            cb({ success: true, isAdmin: data.username === "Admin" });
+            io.emit("online", Object.keys(online));
+        } else cb({ success: false });
     });
 
-    io.emit("online", Object.keys(online));
-  });
+    // Создание группы (только для админа)
+    socket.on("create-group", (groupName) => {
+        if (socket.username === "Admin") {
+            io.emit("group-available", groupName);
+        }
+    });
 
-  socket.on("setAvatar", img => {
-    if (!socket.username) return;
-    users[socket.username].avatar = img;
-    saveUsers();
-  });
+    socket.on("join-group", (groupName) => {
+        socket.join(groupName);
+        socket.to(groupName).emit("user-joined", { from: socket.username, sid: socket.id });
+    });
 
-  socket.on("send_message", data => {
-    if (!socket.username) return;
+    // Сигналинг (исправлен для передачи экрана)
+    socket.on("call-user", d => {
+        const target = online[d.to] || d.to;
+        io.to(target).emit("incoming-call", { fromSid: socket.id, offer: d.offer });
+    });
 
-    if (data.to === "global") {
-      io.emit("new_message", {
-        from: socket.username,
-        text: data.text,
-        image: data.image || null
-      });
-    } else {
-      const id = online[data.to];
-      if (id) {
-        io.to(id).emit("new_message", {
-          from: socket.username,
-          text: data.text,
-          image: data.image || null
-        });
-      }
+    socket.on("answer-call", d => {
+        const target = online[d.to] || d.to;
+        io.to(target).emit("call-answered", { fromSid: socket.id, answer: d.answer });
+    });
 
-      io.to(socket.id).emit("new_message", {
-        from: socket.username,
-        text: data.text,
-        image: data.image || null
-      });
-    }
-  });
+    socket.on("ice-candidate", d => {
+        const target = online[d.to] || d.to;
+        io.to(target).emit("ice-candidate", { fromSid: socket.id, candidate: d.candidate });
+    });
 
-  socket.on("disconnect", () => {
-    if (socket.username) {
-      delete online[socket.username];
-      io.emit("online", Object.keys(online));
-    }
-  });
-
+    socket.on("disconnect", () => {
+        if (socket.username) {
+            delete online[socket.username];
+            io.emit("online", Object.keys(online));
+        }
+    });
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log("Server started"));
+server.listen(3000, () => console.log("Server OK"));
