@@ -2,125 +2,287 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>AsylumGram Fix</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Asylumgram ☣</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        body { font-family: sans-serif; background: #222; color: white; text-align: center; }
-        video { width: 320px; border: 2px solid #555; margin: 10px; border-radius: 8px; background: #000; }
-        #controls { margin-top: 20px; display: none; }
-        .admin-only { display: none; background: #444; padding: 15px; margin: 10px; }
-        button { padding: 10px 20px; cursor: pointer; margin: 5px; }
+        :root { --main: #724cf9; --bg: #0a0a0c; --panel: #16161a; --danger: #ff4757; --success: #2ed573; }
+        * { box-sizing: border-box; transition: 0.2s ease-in-out; }
+        body { margin: 0; font-family: 'Segoe UI', Tahoma, sans-serif; background: var(--bg); color: #fff; height: 100vh; overflow: hidden; }
+
+        /* AUTH SCREEN */
+        #auth-screen { height: 100vh; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle, #1e1240, #0a0a0c); }
+        .auth-card { background: var(--panel); padding: 50px; border-radius: 30px; width: 360px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.8); border: 1px solid #ffffff10; }
+        .bio-icon { font-size: 80px; color: var(--main); margin-bottom: 20px; text-shadow: 0 0 30px rgba(114, 76, 249, 0.5); }
+        input { width: 100%; padding: 15px; margin: 12px 0; border-radius: 12px; border: 1px solid #333; background: #000; color: #fff; font-size: 16px; outline: none; }
+        input:focus { border-color: var(--main); box-shadow: 0 0 10px rgba(114, 76, 249, 0.2); }
+        .btn-primary { width: 100%; padding: 15px; border-radius: 12px; border: none; background: var(--main); color: #fff; font-weight: bold; cursor: pointer; font-size: 16px; }
+        .btn-primary:active { transform: scale(0.95); }
+
+        /* MAIN APP UI */
+        #main-ui { display: none; height: 100vh; grid-template-columns: 300px 1fr; }
+        .sidebar { background: #111; border-right: 1px solid #222; display: flex; flex-direction: column; }
+        .side-header { padding: 25px; font-size: 18px; font-weight: 800; border-bottom: 1px solid #222; display: flex; align-items: center; gap: 10px; }
+        .user-list { flex: 1; overflow-y: auto; padding: 15px; }
+        .user-item { padding: 12px 15px; border-radius: 12px; margin-bottom: 8px; background: #ffffff05; display: flex; align-items: center; gap: 12px; cursor: pointer; border: 1px solid transparent; }
+        .user-item:hover { background: #ffffff10; border-color: var(--main); }
+        .online-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--success); box-shadow: 0 0 8px var(--success); }
+
+        /* CHAT AREA */
+        .chat-area { display: flex; flex-direction: column; background: var(--bg); position: relative; }
+        .chat-header { padding: 15px 25px; background: #111; border-bottom: 1px solid #222; display: flex; justify-content: space-between; align-items: center; }
+        #messages { flex: 1; overflow-y: auto; padding: 30px; display: flex; flex-direction: column; gap: 15px; }
+        .message { padding: 12px 18px; border-radius: 20px; max-width: 70%; font-size: 15px; line-height: 1.5; position: relative; }
+        .msg-mine { align-self: flex-end; background: var(--main); border-bottom-right-radius: 4px; box-shadow: 0 5px 15px rgba(114, 76, 249, 0.2); }
+        .msg-other { align-self: flex-start; background: var(--panel); border-bottom-left-radius: 4px; border: 1px solid #333; }
+        .msg-meta { font-size: 10px; opacity: 0.5; margin-bottom: 4px; display: block; font-weight: bold; }
+
+        .input-bar { padding: 20px; background: #111; display: flex; gap: 15px; align-items: center; border-top: 1px solid #222; }
+        .chat-input { flex: 1; background: #000; border: 1px solid #333; padding: 15px; border-radius: 15px; color: #fff; outline: none; }
+        .icon-btn { width: 50px; height: 50px; border-radius: 15px; border: none; background: var(--main); color: #fff; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+
+        /* CALL OVERLAY (FULLSCREEN) */
+        #call-overlay { position: fixed; inset: 0; background: #000; display: none; flex-direction: column; z-index: 9999; }
+        .video-wrapper { flex: 1; position: relative; display: flex; flex-direction: column; gap: 10px; padding: 10px; }
+        video { width: 100%; height: 100%; object-fit: cover; background: #111; border-radius: 20px; }
+        #v_local { position: absolute; width: 150px; height: 220px; bottom: 120px; right: 30px; border: 3px solid var(--main); z-index: 10; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .call-ui { height: 120px; background: rgba(0,0,0,0.9); display: flex; justify-content: center; align-items: center; gap: 25px; backdrop-filter: blur(10px); }
+        .call-btn { width: 65px; height: 65px; border-radius: 50%; border: none; background: #333; color: #fff; font-size: 24px; cursor: pointer; }
+        .call-btn.hangup { background: var(--danger); }
+        .call-btn.active { background: #fff; color: #000; }
+
+        /* INCOMING POPUP */
+        #incoming-ui { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); width: 350px; background: var(--panel); padding: 25px; border-radius: 25px; border: 2px solid var(--main); z-index: 10000; display: none; text-align: center; box-shadow: 0 0 100px rgba(0,0,0,1); animation: slideDown 0.3s ease-out; }
+        @keyframes slideDown { from { transform: translate(-50%, -100%); } to { transform: translate(-50%, 0); } }
+
+        @media (max-width: 768px) {
+            #main-ui { grid-template-columns: 1fr; }
+            .sidebar { display: none; }
+            #v_local { width: 100px; height: 150px; bottom: 130px; right: 15px; }
+        }
     </style>
 </head>
 <body>
 
-    <div id="auth">
-        <input type="text" id="user" placeholder="Логин">
-        <input type="password" id="pass" placeholder="Пароль">
-        <button onclick="login()">Войти</button>
+<div id="auth-screen">
+    <div class="auth-card">
+        <i class="fas fa-biohazard bio-icon"></i>
+        <h1 style="margin:0 0 30px; letter-spacing: 5px;">ASYLUM</h1>
+        <input id="u_name" placeholder="Твой секретный логин">
+        <input id="u_pass" type="password" placeholder="Пароль">
+        <button class="btn-primary" onclick="auth('login')">ВОЙТИ В СИСТЕМУ</button>
+        <p style="margin-top:20px; font-size:12px; opacity:0.5; cursor:pointer" onclick="auth('register')">Зарегистрировать новый токен</p>
     </div>
+</div>
 
-    <div id="main" style="display:none">
-        <div id="admin-box" class="admin-only">
-            <input type="text" id="gname" placeholder="Имя группы">
-            <button onclick="makeGroup()">➕ Создать группу</button>
+<div id="main-ui">
+    <div class="sidebar">
+        <div class="side-header"><i class="fas fa-satellite-dish"></i> ONLINE_USERS</div>
+        <div class="user-list" id="contacts"></div>
+    </div>
+    <div class="chat-area">
+        <div class="chat-header">
+            <div style="display:flex; align-items:center; gap:15px">
+                <div class="online-dot"></div>
+                <select id="target_id" style="background:none; border:none; color:#fff; font-size:18px; font-weight:bold; outline:none; cursor:pointer">
+                    <option value="global" style="background:#111">🌍 GLOBAL_CHANNEL</option>
+                </select>
+            </div>
+            <button class="icon-btn" onclick="initiateCall()" style="background:var(--success)"><i class="fas fa-phone"></i></button>
         </div>
+        <div id="messages"></div>
+        <div class="input-bar">
+            <input class="chat-input" id="msg_val" placeholder="Введите сообщение...">
+            <button class="icon-btn" onclick="sendMsg()"><i class="fas fa-paper-plane"></i></button>
+        </div>
+    </div>
+</div>
 
-        <div id="groups"></div>
+<div id="incoming-ui">
+    <p style="opacity:0.6; margin-bottom:10px; font-size:14px;">ВХОДЯЩИЙ ЗАПРОС СВЯЗИ</p>
+    <h2 id="caller_id" style="margin:0 0 25px">Unknown</h2>
+    <div style="display:flex; gap:15px">
+        <button class="btn-primary" onclick="acceptCall()" style="background:var(--success)">ПРИНЯТЬ</button>
+        <button class="btn-primary" onclick="declineCall()" style="background:var(--danger)">ОТКЛОНИТЬ</button>
+    </div>
+</div>
+
+<div id="call-overlay">
+    <div class="video-wrapper">
+        <video id="v_remote" autoplay playsinline></video>
+        <video id="v_local" autoplay muted playsinline></video>
+    </div>
+    <div class="call-ui">
+        <button class="call-btn" onclick="toggleMic(this)"><i class="fas fa-microphone"></i></button>
+        <button class="call-btn" onclick="toggleScreen(this)"><i class="fas fa-desktop"></i></button>
+        <button class="call-btn hangup" onclick="endCall()"><i class="fas fa-phone-slash"></i></button>
+    </div>
+</div>
+
+<script>
+    const socket = io();
+    let myName = "", peer = null, localStream = null, currentTarget = "";
+
+    // AUTH
+    function auth(mode) {
+        const u = document.getElementById("u_name").value;
+        const p = document.getElementById("u_pass").value;
+        if(!u || !p) return alert("Заполни поля!");
+        socket.emit(mode, {username: u, password: p}, (res) => {
+            if(res.success) {
+                if(mode === 'login') {
+                    myName = u;
+                    document.getElementById("auth-screen").style.display = "none";
+                    document.getElementById("main-ui").style.display = "grid";
+                } else alert("Успешно! Теперь войди.");
+            } else alert(res.message || "Ошибка!");
+        });
+    }
+
+    // MESSAGES
+    function sendMsg() {
+        const txt = document.getElementById("msg_val").value;
+        const to = document.getElementById("target_id").value;
+        if(!txt) return;
+        socket.emit("send_message", {to, text: txt});
+        document.getElementById("msg_val").value = "";
+    }
+
+    socket.on("new_message", d => {
+        const div = document.createElement("div");
+        div.className = `message ${d.from === myName ? 'msg-mine' : 'msg-other'}`;
+        div.innerHTML = `<span class="msg-meta">${d.from} • ${d.time || ''}</span>${d.text}`;
+        const box = document.getElementById("messages");
+        box.appendChild(div);
+        box.scrollTop = box.scrollHeight;
+    });
+
+    socket.on("online", list => {
+        const select = document.getElementById("target_id");
+        const contacts = document.getElementById("contacts");
+        select.innerHTML = '<option value="global" style="background:#111">🌍 GLOBAL_CHANNEL</option>';
+        contacts.innerHTML = "";
+        list.forEach(u => {
+            if(u === myName) return;
+            select.innerHTML += `<option value="${u}" style="background:#111">${u}</option>`;
+            contacts.innerHTML += `<div class="user-item"><div class="online-dot"></div> ${u}</div>`;
+        });
+    });
+
+    // --- WEB RTC CORE ---
+    
+    
+    async function getMedia(scr = false) {
+        if(localStream) localStream.getTracks().forEach(t => t.stop());
+        try {
+            localStream = scr ? 
+                await navigator.mediaDevices.getDisplayMedia({video:true}) : 
+                await navigator.mediaDevices.getUserMedia({video:true, audio:true}).catch(() => navigator.mediaDevices.getUserMedia({audio:true}));
+            document.getElementById("v_local").srcObject = localStream;
+            return true;
+        } catch(e) {
+            console.error("Медиа недоступно", e);
+            return false;
+        }
+    }
+
+    function createPeer(target) {
+        peer = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
         
-        <div id="video-ui">
-            <video id="local" autoplay muted playsinline></video>
-            <video id="remote" autoplay playsinline></video>
-            <br>
-            <button id="scrBtn" onclick="toggleScreen()">🖥️ Экран</button>
-            <button onclick="location.reload()">❌ Сброс</button>
-        </div>
-    </div>
+        localStream.getTracks().forEach(track => peer.addTrack(track, localStream));
 
-    <script src="/socket.io/socket.io.js"></script>
-    <script>
-        const socket = io();
-        let localStream, peer, screenStream;
+        peer.ontrack = (event) => {
+            document.getElementById("v_remote").srcObject = event.streams[0];
+        };
 
-        async function login() {
-            const username = document.getElementById('user').value;
-            socket.emit('login', { username, password: document.getElementById('pass').value }, (res) => {
-                if(res.success) {
-                    document.getElementById('auth').style.display = 'none';
-                    document.getElementById('main').style.display = 'block';
-                    if(res.isAdmin) document.getElementById('admin-box').style.display = 'block';
-                    initCamera();
-                }
-            });
-        }
-
-        async function initCamera() {
-            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-            document.getElementById('local').srcObject = localStream;
-        }
-
-        function makeGroup() {
-            const name = document.getElementById('gname').value;
-            if(name) socket.emit('create-group', name);
-        }
-
-        socket.on('group-available', (name) => {
-            const b = document.createElement('button');
-            b.innerText = "Группа: " + name;
-            b.onclick = () => { socket.emit('join-group', name); };
-            document.getElementById('groups').appendChild(b);
-        });
-
-        // ФИКС ЭКРАНА: заменяем трек в текущем соединении
-        async function toggleScreen() {
-            if (!screenStream) {
-                screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-                const track = screenStream.getVideoTracks()[0];
-                
-                if (peer) {
-                    const sender = peer.getSenders().find(s => s.track.kind === 'video');
-                    sender.replaceTrack(track); // Вот это чинит баг
-                }
-                document.getElementById('local').srcObject = screenStream;
-                track.onended = () => toggleScreen();
-            } else {
-                screenStream.getTracks().forEach(t => t.stop());
-                screenStream = null;
-                const videoTrack = localStream.getVideoTracks()[0];
-                if (peer) {
-                    const sender = peer.getSenders().find(s => s.track.kind === 'video');
-                    sender.replaceTrack(videoTrack);
-                }
-                document.getElementById('local').srcObject = localStream;
+        peer.onicecandidate = (event) => {
+            if (event.candidate) {
+                socket.emit("ice-candidate", { to: target, candidate: event.candidate });
             }
-        }
+        };
 
-        socket.on('incoming-call', async (d) => {
-            await createPeer(d.fromSid);
-            await peer.setRemoteDescription(new RTCSessionDescription(d.offer));
-            const ans = await peer.createAnswer();
-            await peer.setLocalDescription(ans);
-            socket.emit('answer-call', { to: d.fromSid, answer: ans });
-        });
-
-        socket.on('call-answered', d => peer.setRemoteDescription(new RTCSessionDescription(d.answer)));
-        socket.on('ice-candidate', d => peer.addIceCandidate(new RTCIceCandidate(d.candidate)));
-
-        async function createPeer(sid) {
-            peer = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
-            localStream.getTracks().forEach(t => peer.addTrack(t, localStream));
-            peer.ontrack = e => document.getElementById('remote').srcObject = e.streams[0];
-            peer.onicecandidate = e => {
-                if(e.candidate) socket.emit('ice-candidate', { to: sid, candidate: e.candidate });
-            };
-        }
-
-        // Авто-вызов при входе в группу
-        socket.on('user-joined', async (d) => {
-            await createPeer(d.sid);
+        peer.onnegotiationneeded = async () => {
             const offer = await peer.createOffer();
             await peer.setLocalDescription(offer);
-            socket.emit('call-user', { to: d.sid, offer });
-        });
-    </script>
+            socket.emit("call-user", { to: target, offer });
+        };
+    }
+
+    async function initiateCall() {
+        currentTarget = document.getElementById("target_id").value;
+        if(currentTarget === "global") return alert("Выбери цель!");
+        
+        const ok = await getMedia();
+        if(!ok) return alert("Нужен доступ к микрофону/камере!");
+
+        document.getElementById("call-overlay").style.display = "flex";
+        createPeer(currentTarget);
+    }
+
+    socket.on("incoming-call", async ({from, offer}) => {
+        currentTarget = from;
+        window.incomingOffer = offer;
+        document.getElementById("caller_id").innerText = from;
+        document.getElementById("incoming-ui").style.display = "block";
+    });
+
+    async function acceptCall() {
+        document.getElementById("incoming-ui").style.display = "none";
+        await getMedia();
+        document.getElementById("call-overlay").style.display = "flex";
+        
+        createPeer(currentTarget);
+        await peer.setRemoteDescription(new RTCSessionDescription(window.incomingOffer));
+        const answer = await peer.createAnswer();
+        await peer.setLocalDescription(answer);
+        socket.emit("answer-call", { to: currentTarget, answer });
+    }
+
+    socket.on("call-answered", async (data) => {
+        await peer.setRemoteDescription(new RTCSessionDescription(data.answer));
+    });
+
+    socket.on("ice-candidate", async (data) => {
+        if (peer) await peer.addIceCandidate(new RTCIceCandidate(data.candidate));
+    });
+
+    socket.on("call-rejected", () => endCall(true));
+
+    function declineCall() {
+        document.getElementById("incoming-ui").style.display = "none";
+        socket.emit("reject-call", { to: currentTarget });
+    }
+
+    function endCall(remote = false) {
+        if(peer) peer.close();
+        if(localStream) localStream.getTracks().forEach(t => t.stop());
+        document.getElementById("call-overlay").style.display = "none";
+        document.getElementById("incoming-ui").style.display = "none";
+        if(!remote) socket.emit("reject-call", { to: currentTarget });
+        peer = null;
+    }
+
+    function toggleMic(btn) {
+        const audio = localStream.getAudioTracks()[0];
+        audio.enabled = !audio.enabled;
+        btn.classList.toggle("active", !audio.enabled);
+        btn.innerHTML = audio.enabled ? '<i class="fas fa-microphone"></i>' : '<i class="fas fa-microphone-slash"></i>';
+    }
+
+    async function toggleScreen(btn) {
+        const isSharing = btn.classList.toggle("active");
+        await getMedia(isSharing);
+        const videoTrack = localStream.getVideoTracks()[0];
+        const sender = peer.getSenders().find(s => s.track.kind === 'video');
+        if(sender) sender.replaceTrack(videoTrack);
+        
+        if(isSharing) {
+            videoTrack.onended = () => toggleScreen(btn);
+        }
+    }
+
+    document.getElementById("msg_val").onkeypress = e => { if(e.key === "Enter") sendMsg(); };
+</script>
 </body>
 </html>
