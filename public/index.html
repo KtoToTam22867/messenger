@@ -1,453 +1,220 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Asylumgram | Secure Chat</title>
-    <script src="/socket.io/socket.io.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
-    
-    <style>
-        :root {
-            --bg: #0a0a0c;
-            --panel: #16161a;
-            --accent: #724cf9;
-            --accent-hover: #5b39cc;
-            --text: #e1e1e6;
-            --text-dim: #a8a8b3;
-            --danger: #ff4757;
-            --success: #2ed573;
-        }
-
-        * { box-sizing: border-box; outline: none; }
-        body { 
-            font-family: 'Inter', sans-serif; 
-            margin: 0; 
-            background: var(--bg); 
-            color: var(--text);
-            height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
-        }
-
-        /* ЛОГОТИП */
-        .logo-container {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 30px;
-        }
-        .logo-icon {
-            width: 45px;
-            height: 45px;
-            background: var(--accent);
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 0 20px rgba(114, 76, 249, 0.4);
-        }
-
-        /* АВТОРИЗАЦИЯ */
-        #auth {
-            background: var(--panel);
-            padding: 40px;
-            border-radius: 24px;
-            width: 100%;
-            max-width: 400px;
-            text-align: center;
-            border: 1px solid rgba(255,255,255,0.05);
-            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
-        }
-        input {
-            width: 100%;
-            padding: 14px;
-            margin: 10px 0;
-            border-radius: 12px;
-            border: 1px solid #2a2a30;
-            background: #0d0d0f;
-            color: white;
-            transition: 0.3s;
-        }
-        input:focus { border-color: var(--accent); }
-        button {
-            width: 100%;
-            padding: 14px;
-            margin: 10px 0;
-            border-radius: 12px;
-            border: none;
-            background: var(--accent);
-            color: white;
-            font-weight: 600;
-            cursor: pointer;
-            transition: 0.2s;
-        }
-        button:hover { background: var(--accent-hover); transform: translateY(-1px); }
-        button.secondary { background: transparent; border: 1px solid var(--accent); color: var(--accent); }
-
-        /* ОСНОВНОЙ КОНТЕЙНЕР ЧАТА */
-        #chat {
-            display: none;
-            width: 95vw;
-            height: 90vh;
-            max-width: 1200px;
-            background: var(--panel);
-            border-radius: 24px;
-            display: grid;
-            grid-template-columns: 300px 1fr;
-            overflow: hidden;
-            border: 1px solid rgba(255,255,255,0.05);
-        }
-
-        /* БОКОВАЯ ПАНЕЛЬ */
-        .sidebar {
-            background: #111114;
-            border-right: 1px solid #2a2a30;
-            display: flex;
-            flex-direction: column;
-            padding: 20px;
-        }
-        .user-profile {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 25px;
-            padding-bottom: 15px;
-            border-bottom: 1px solid #2a2a30;
-        }
-        .user-profile i { font-size: 24px; color: var(--accent); }
-
-        .online-list { flex: 1; overflow-y: auto; }
-        .online-item {
-            padding: 10px;
-            border-radius: 10px;
-            margin-bottom: 5px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 14px;
-        }
-        .status-dot { width: 8px; height: 8px; background: var(--success); border-radius: 50%; box-shadow: 0 0 10px var(--success); }
-
-        /* ОКНО СООБЩЕНИЙ */
-        .main-chat { display: flex; flex-direction: column; background: #16161a; position: relative; }
-        
-        .chat-header {
-            padding: 15px 25px;
-            background: rgba(22, 22, 26, 0.8);
-            backdrop-filter: blur(10px);
-            border-bottom: 1px solid #2a2a30;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            z-index: 10;
-        }
-
-        #messages {
-            flex: 1;
-            padding: 20px;
-            overflow-y: auto;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            background-image: radial-gradient(circle at 2px 2px, #2a2a30 1px, transparent 0);
-            background-size: 40px 40px;
-        }
-
-        .msg {
-            max-width: 70%;
-            padding: 12px 18px;
-            border-radius: 18px;
-            font-size: 14px;
-            line-height: 1.5;
-            position: relative;
-        }
-        .msg.mine {
-            align-self: flex-end;
-            background: var(--accent);
-            color: white;
-            border-bottom-right-radius: 4px;
-        }
-        .msg.others {
-            align-self: flex-start;
-            background: #2a2a32;
-            color: var(--text);
-            border-bottom-left-radius: 4px;
-        }
-        .msg-info { font-size: 10px; opacity: 0.7; margin-bottom: 4px; display: block; }
-
-        /* ВИДЕО ЗВОНКИ */
-        .video-grid {
-            position: absolute;
-            top: 80px;
-            left: 20px;
-            right: 20px;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-            z-index: 100;
-            pointer-events: none;
-        }
-        video {
-            width: 100%;
-            border-radius: 16px;
-            background: #000;
-            border: 2px solid var(--accent);
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            pointer-events: auto;
-            display: none; /* Показываем только при звонке */
-        }
-
-        /* ПОЛЕ ВВОДА */
-        .input-area {
-            padding: 20px;
-            display: flex;
-            gap: 10px;
-            background: #111114;
-            border-top: 1px solid #2a2a30;
-        }
-        .input-area input { margin: 0; background: #1c1c21; }
-        .btn-icon { width: 50px; flex-shrink: 0; }
-        
-        #toUser {
-            background: #1c1c21;
-            color: white;
-            border: 1px solid #2a2a30;
-            border-radius: 12px;
-            padding: 0 10px;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Discord Clone</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<div id="auth">
-    <div class="logo-container" style="justify-content: center;">
-        <div class="logo-icon"><i class="fas fa-biohazard fa-lg"></i></div>
-        <h2 style="margin:0; letter-spacing: 2px;">ASYLUM</h2>
+<!-- ========== LOGIN ========== -->
+<div id="login-screen" class="login-screen">
+  <div class="login-box">
+    <div class="login-logo">💬</div>
+    <h1>Добро пожаловать!</h1>
+    <p class="login-sub">Войди или зайди как гость</p>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="guest">Гость</button>
+      <button class="tab" data-tab="login">Вход</button>
+      <button class="tab" data-tab="register">Регистрация</button>
     </div>
-    <input id="username" placeholder="Ваш никнейм">
-    <input id="password" type="password" placeholder="Пароль">
-    <button onclick="login()">ВОЙТИ</button>
-    <button class="secondary" onclick="register()">РЕГИСТРАЦИЯ</button>
+
+    <div class="avatar-section">
+      <div class="av-circle-big" id="login-av">
+        <span id="login-av-letter">?</span>
+        <img id="login-av-img" class="hidden" alt="">
+      </div>
+      <label class="av-btn">📷 Загрузить аватар
+        <input type="file" id="login-av-file" accept="image/*" hidden>
+      </label>
+    </div>
+
+    <form id="login-form">
+      <div class="field">
+        <label>ИМЯ ПОЛЬЗОВАТЕЛЯ</label>
+        <input type="text" id="inp-user" placeholder="Введите имя" required autocomplete="off">
+      </div>
+      <div class="field hidden" id="field-pass">
+        <label>ПАРОЛЬ</label>
+        <input type="password" id="inp-pass" placeholder="Введите пароль">
+      </div>
+      <button type="submit" class="submit-btn" id="submit-btn">Войти как гость</button>
+      <p class="error-text" id="error-text"></p>
+    </form>
+  </div>
 </div>
 
-<div id="chat" style="display: none;">
-    <aside class="sidebar">
-        <div class="user-profile">
-            <i class="fas fa-user-circle"></i>
-            <div>
-                <div id="me" style="font-weight: 600;">Username</div>
-                <div style="font-size: 11px; color: var(--success);">Online</div>
-            </div>
-        </div>
-        
-        <div style="font-size: 12px; color: var(--text-dim); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px;">
-            В сети
-        </div>
-        <div class="online-list" id="onlineUsers">
-            </div>
+<!-- ========== APP ========== -->
+<div id="app" class="app hidden">
 
-        <div style="margin-top: auto;">
-            <button class="secondary" style="padding: 8px; font-size: 12px;" onclick="location.reload()">Выйти</button>
+  <!-- Servers bar -->
+  <div class="servers-col">
+    <div class="srv-icon active" title="Главная">💬<div class="pill"></div></div>
+    <div class="srv-sep"></div>
+    <div id="srv-list"></div>
+    <div class="srv-icon add-srv" title="Добавить">+</div>
+  </div>
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="side-hdr"><h2 id="srv-name">Сервер</h2><span>⌄</span></div>
+
+    <div class="ch-scroll">
+      <div class="ch-cat">
+        <span class="cat-arr">▾</span> ТЕКСТОВЫЕ КАНАЛЫ
+        <button class="add-ch-btn" data-type="text" title="Создать канал">+</button>
+      </div>
+      <div id="text-ch"></div>
+
+      <div class="ch-cat">
+        <span class="cat-arr">▾</span> ГОЛОСОВЫЕ КАНАЛЫ
+        <button class="add-ch-btn" data-type="voice" title="Создать канал">+</button>
+      </div>
+      <div id="voice-ch"></div>
+    </div>
+
+    <!-- Voice connection bar -->
+    <div class="vc-bar hidden" id="vc-bar">
+      <div>
+        <div class="vcb-green">🟢 Голосовой канал</div>
+        <div class="vcb-name" id="vcb-name"></div>
+      </div>
+      <button class="vcb-hang" id="vcb-hang" title="Отключиться">📞</button>
+    </div>
+
+    <!-- User panel -->
+    <div class="user-panel">
+      <div class="up-left">
+        <div class="up-av-wrap">
+          <div class="up-av" id="my-av"></div>
+          <div class="up-dot-wrap"><div class="up-dot online"></div></div>
         </div>
-    </aside>
+        <div class="up-info">
+          <div class="up-name" id="my-name"></div>
+          <div class="up-sub">В сети</div>
+        </div>
+      </div>
+      <div class="up-btns">
+        <button class="up-btn" id="btn-mic" title="Микрофон">🎤</button>
+        <button class="up-btn" id="btn-deaf" title="Звук">🔊</button>
+        <button class="up-btn" id="btn-cfg" title="Настройки">⚙️</button>
+      </div>
+    </div>
+  </div>
 
-    <main class="main-chat">
-        <header class="chat-header">
-            <div style="display: flex; align-items: center; gap: 15px;">
-                <select id="toUser">
-                    <option value="global">🌍 Общий чат</option>
-                </select>
-            </div>
-            <div style="display: flex; gap: 10px;">
-                <button id="callBtn" onclick="startCall()" style="width: auto; padding: 10px 20px; background: var(--success);">
-                    <i class="fas fa-phone"></i>
-                </button>
-                <button id="endBtn" onclick="endCall()" style="width: auto; padding: 10px 20px; background: var(--danger); display: none;">
-                    <i class="fas fa-phone-slash"></i>
-                </button>
-            </div>
-        </header>
+  <!-- Main -->
+  <div class="main-col">
+    <div class="top-bar">
+      <span class="top-hash">#</span>
+      <span class="top-name" id="top-name">общий</span>
+      <div class="top-right">
+        <button class="top-btn" id="btn-members" title="Участники">👥</button>
+        <div class="search-box"><input placeholder="Поиск" id="search-inp"></div>
+      </div>
+    </div>
 
-        <div class="video-grid">
-            <video id="localVideo" autoplay muted></video>
-            <video id="remoteVideo" autoplay></video>
+    <div class="mid-row">
+      <!-- Chat -->
+      <div class="chat-col" id="chat-col">
+        <div class="msg-scroll" id="msg-scroll">
+          <div class="welcome">
+            <div class="welcome-icon">#</div>
+            <h2>Добро пожаловать в #<span id="w-ch-name">общий</span>!</h2>
+            <p>Это начало канала.</p>
+          </div>
+          <div id="msg-list"></div>
         </div>
 
-        <div id="messages">
-            </div>
-
-        <div class="input-area">
-            <input id="messageInput" placeholder="Введите сообщение...">
-            <button class="btn-icon" onclick="send()"><i class="fas fa-paper-plane"></i></button>
+        <div class="typing-row hidden" id="typing-row">
+          <span class="t-dots"><i></i><i></i><i></i></span>
+          <span id="typing-who"></span>
         </div>
-    </main>
+
+        <div class="input-row">
+          <label class="plus-btn" title="Прикрепить файл">➕
+            <input type="file" id="file-inp" accept="image/*,video/*,.gif" hidden>
+          </label>
+          <textarea id="msg-inp" placeholder="Написать в #общий" rows="1"></textarea>
+          <button class="emoji-btn-trigger" id="emoji-btn">😊</button>
+        </div>
+      </div>
+
+      <!-- Voice UI -->
+      <div class="voice-col hidden" id="voice-col">
+        <div class="va-title"><h3>🔊 <span id="va-ch-name"></span></h3></div>
+        <div class="va-grid" id="va-grid"></div>
+        <div class="va-controls">
+          <button class="va-btn" id="va-mic" title="Микрофон">🎤</button>
+          <button class="va-btn" id="va-cam" title="Камера">📷</button>
+          <button class="va-btn" id="va-scr" title="Экран">🖥️</button>
+          <button class="va-btn hang" id="va-hang" title="Отключиться">📞</button>
+        </div>
+      </div>
+
+      <!-- Members -->
+      <div class="members-col" id="members-col">
+        <div class="mem-cat">В СЕТИ — <span id="online-cnt">0</span></div>
+        <div id="mem-list"></div>
+      </div>
+    </div>
+  </div>
 </div>
 
-<script>
-const socket = io();
-let myUsername = null;
-let currentCallUser = null;
-let localStream;
-let peer;
+<!-- Emoji picker -->
+<div class="emo-popup hidden" id="emo-popup"><div class="emo-grid" id="emo-grid"></div></div>
 
-const config = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+<!-- Context menu -->
+<div class="ctx hidden" id="ctx">
+  <div class="ctx-item" data-a="react">😊 Реакция</div>
+  <div class="ctx-item" data-a="copy">📋 Копировать</div>
+  <div class="ctx-item own-only" data-a="edit">✏️ Редактировать</div>
+  <div class="ctx-item own-only" data-a="delete">🗑️ Удалить</div>
+</div>
 
-// --- ФУНКЦИИ ИНТЕРФЕЙСА ---
+<!-- Create channel modal -->
+<div class="modal hidden" id="modal-ch">
+  <div class="modal-bg"></div>
+  <div class="modal-box">
+    <h2>Создать канал</h2>
+    <div class="type-row">
+      <label class="type-card sel" data-t="text"><span>#</span><div><b>Текстовый</b><p>Сообщения</p></div></label>
+      <label class="type-card" data-t="voice"><span>🔊</span><div><b>Голосовой</b><p>Голос и видео</p></div></label>
+    </div>
+    <div class="field"><label>НАЗВАНИЕ</label><input id="new-ch-inp" placeholder="новый-канал"></div>
+    <div class="modal-btns">
+      <button class="m-cancel" id="ch-cancel">Отмена</button>
+      <button class="m-ok" id="ch-create">Создать</button>
+    </div>
+  </div>
+</div>
 
-function register(){
-    socket.emit("register",{
-        username:username.value,
-        password:password.value
-    },res => alert(res.success ? "Регистрация успешна!" : "Ошибка (юзер занят)"));
-}
+<!-- Settings modal -->
+<div class="modal hidden" id="modal-cfg">
+  <div class="modal-bg"></div>
+  <div class="modal-box">
+    <h2>⚙️ Настройки</h2>
+    <div class="cfg-av-section">
+      <div class="av-circle-big" id="cfg-av">
+        <span id="cfg-av-letter"></span>
+        <img id="cfg-av-img" class="hidden" alt="">
+      </div>
+      <label class="av-btn">📷 Сменить аватар
+        <input type="file" id="cfg-av-file" accept="image/*" hidden>
+      </label>
+    </div>
+    <div class="modal-btns">
+      <button class="m-cancel" id="cfg-cancel">Закрыть</button>
+      <button class="m-ok" id="cfg-save">Сохранить</button>
+    </div>
+  </div>
+</div>
 
-function login(){
-    socket.emit("login",{
-        username:username.value,
-        password:password.value
-    },res => {
-        if(!res.success) return alert("Неверные данные");
-        myUsername = username.value;
-        document.getElementById("auth").style.display = "none";
-        document.getElementById("chat").style.display = "grid";
-        document.getElementById("me").innerText = myUsername;
-    });
-}
+<!-- Toasts -->
+<div class="toast-container" id="toasts"></div>
 
-function send(){
-    const text = messageInput.value;
-    if(!text) return;
-    socket.emit("send_message",{
-        to: toUser.value,
-        text: text
-    });
-    messageInput.value = "";
-}
-
-// Рендер сообщений
-socket.on("new_message", data => {
-    const div = document.createElement("div");
-    const isMine = data.from === myUsername;
-    div.className = `msg ${isMine ? 'mine' : 'others'}`;
-    
-    div.innerHTML = `
-        <span class="msg-info">${data.from}</span>
-        <div>${data.text}</div>
-    `;
-    
-    const container = document.getElementById("messages");
-    container.appendChild(div);
-    container.scrollTop = container.scrollHeight;
-});
-
-// Обновление списка онлайн
-socket.on("online", list => {
-    const onlineList = document.getElementById("onlineUsers");
-    const select = document.getElementById("toUser");
-    
-    onlineList.innerHTML = "";
-    // Оставляем global
-    select.innerHTML = '<option value="global">🌍 Общий чат</option>';
-
-    list.forEach(u => {
-        if(u === myUsername) return;
-
-        // В список слева
-        const item = document.createElement("div");
-        item.className = "online-item";
-        item.innerHTML = `<div class="status-dot"></div> ${u}`;
-        onlineList.appendChild(item);
-
-        // В выпадающий список
-        const opt = document.createElement("option");
-        opt.value = u;
-        opt.innerText = `💬 ${u}`;
-        select.appendChild(opt);
-    });
-});
-
-// --- ЛОГИКА ЗВОНКОВ (WebRTC) ---
-
-async function startCall(){
-    currentCallUser = toUser.value;
-    if(currentCallUser === "global") return alert("Выберите конкретного пользователя для звонка");
-
-    document.getElementById("localVideo").style.display = "block";
-    document.getElementById("remoteVideo").style.display = "block";
-    document.getElementById("callBtn").style.display = "none";
-    document.getElementById("endBtn").style.display = "block";
-
-    localStream = await navigator.mediaDevices.getUserMedia({video:true, audio:true});
-    localVideo.srcObject = localStream;
-
-    peer = new RTCPeerConnection(config);
-    localStream.getTracks().forEach(track => peer.addTrack(track, localStream));
-
-    peer.ontrack = e => { remoteVideo.srcObject = e.streams[0]; };
-    peer.onicecandidate = e => {
-        if(e.candidate) socket.emit("ice-candidate", {to: currentCallUser, candidate: e.candidate});
-    };
-
-    const offer = await peer.createOffer();
-    await peer.setLocalDescription(offer);
-    socket.emit("call-user", {to: currentCallUser, offer});
-}
-
-socket.on("incoming-call", async ({from, offer}) => {
-    if(!confirm("Входящий звонок от " + from)) return;
-
-    currentCallUser = from;
-    document.getElementById("localVideo").style.display = "block";
-    document.getElementById("remoteVideo").style.display = "block";
-    document.getElementById("callBtn").style.display = "none";
-    document.getElementById("endBtn").style.display = "block";
-
-    localStream = await navigator.mediaDevices.getUserMedia({video:true, audio:true});
-    localVideo.srcObject = localStream;
-
-    peer = new RTCPeerConnection(config);
-    localStream.getTracks().forEach(track => peer.addTrack(track, localStream));
-
-    peer.ontrack = e => { remoteVideo.srcObject = e.streams[0]; };
-    peer.onicecandidate = e => {
-        if(e.candidate) socket.emit("ice-candidate", {to: from, candidate: e.candidate});
-    };
-
-    await peer.setRemoteDescription(new RTCSessionDescription(offer));
-    const answer = await peer.createAnswer();
-    await peer.setLocalDescription(answer);
-    socket.emit("answer-call", {to: from, answer});
-});
-
-socket.on("call-answered", async ({answer}) => {
-    await peer.setRemoteDescription(new RTCSessionDescription(answer));
-});
-
-socket.on("ice-candidate", async ({candidate}) => {
-    if(peer) await peer.addIceCandidate(new RTCIceCandidate(candidate));
-});
-
-function endCall(){
-    if(peer) peer.close();
-    if(localStream) localStream.getTracks().forEach(t => t.stop());
-    
-    document.getElementById("localVideo").style.display = "none";
-    document.getElementById("remoteVideo").style.display = "none";
-    document.getElementById("callBtn").style.display = "block";
-    document.getElementById("endBtn").style.display = "none";
-    
-    localVideo.srcObject = null;
-    remoteVideo.srcObject = null;
-}
-
-// Отправка по Enter
-messageInput.addEventListener("keypress", (e) => {
-    if (e.key === "Enter") send();
-});
-</script>
+<script src="/socket.io/socket.io.js"></script>
+<script src="app.js"></script>
 </body>
 </html>
